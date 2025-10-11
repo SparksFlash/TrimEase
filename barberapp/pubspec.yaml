@@ -27,6 +27,7 @@ dependencies:
   flutter_sslcommerz: ^2.5.1
   uddoktapay: ^0.0.6
   get: ^4.7.2
+  provider: ^6.0.5
 
 dev_dependencies:
   flutter_test:

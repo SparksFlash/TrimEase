@@ -1,131 +1,3 @@
-// import 'package:flutter/material.dart';
-// import 'package:bkash/bkash.dart';
-// import 'package:flutter_sslcommerz/model/SSLCSdkType.dart';
-// import 'package:flutter_sslcommerz/model/SSLCommerzInitialization.dart';
-// import 'package:flutter_sslcommerz/model/SSLCurrencyType.dart';
-// import 'package:flutter_sslcommerz/sslcommerz.dart';
-// import 'package:uddoktapay/models/customer_model.dart';
-// import 'package:uddoktapay/models/request_response.dart';
-// import 'package:uddoktapay/uddoktapay.dart';
-
-// /// Execute payment for the selected gateway.
-// /// Returns true if payment completed successfully, false otherwise.
-// Future<bool> onButtonTap(
-//   BuildContext context,
-//   String selected,
-//   double amount,
-//   String description,
-// ) async {
-//   switch (selected) {
-//     case 'bkash':
-//       return await bkashPayment(context, amount, description);
-
-//     case 'uddoktapay':
-//       return await uddoktapay(context, amount, description);
-
-//     case 'sslcommerz':
-//       return await sslcommerz(context, amount, description);
-
-//     default:
-//       return false;
-//   }
-// }
-
-// double totalPricePlaceholder = 1.00;
-
-// /// bKash
-// Future<bool> bkashPayment(
-//   BuildContext context,
-//   double amount,
-//   String invoice,
-// ) async {
-//   final bkash = Bkash(logResponse: true);
-//   try {
-//     final response = await bkash.pay(
-//       context: context,
-//       amount: amount,
-//       merchantInvoiceNumber: invoice,
-//     );
-//     // check response fields - adjust based on package version
-//     if ((response.trxId.isNotEmpty || response.paymentId.isNotEmpty)) {
-//       return true;
-//     }
-//     return false;
-//   } on BkashFailure catch (e) {
-//     debugPrint('bKash error: ${e.message}');
-//     return false;
-//   } catch (e) {
-//     debugPrint('bKash unknown error: $e');
-//     return false;
-//   }
-// }
-
-// /// UddoktaPay
-// Future<bool> uddoktapay(
-//   BuildContext context,
-//   double amount,
-//   String description,
-// ) async {
-//   try {
-//     final response = await UddoktaPay.createPayment(
-//       context: context,
-//       customer: CustomerDetails(
-//         email: 'ug2102056@cse.pstu.ac.bd',
-//         fullName: 'Customer',
-//       ),
-//       amount: amount.toString(),
-//     );
-
-//     if (response.status == ResponseStatus.completed) {
-//       debugPrint('UddoktaPay completed, Trx ID: ${response.transactionId}');
-//       return true;
-//     } else {
-//       debugPrint('UddoktaPay status: ${response.status}');
-//       return false;
-//     }
-//   } catch (e) {
-//     debugPrint('UddoktaPay error: $e');
-//     return false;
-//   }
-// }
-
-// /// SslCommerz
-// Future<bool> sslcommerz(
-//   BuildContext context,
-//   double amount,
-//   String invoice,
-// ) async {
-//   try {
-//     Sslcommerz sslcommerz = Sslcommerz(
-//       initializer: SSLCommerzInitialization(
-//         multi_card_name: "visa,master,bkash",
-//         currency: SSLCurrencyType.BDT,
-//         product_category: "Service",
-//         sdkType: SSLCSdkType.TESTBOX,
-//         store_id: "trime68e81f8f7f99f", // replace with real
-//         store_passwd: "trime68e81f8f7f99f@ssl", // replace with real
-//         total_amount: amount,
-//         tran_id: "TestTRX001",
-//       ),
-//     );
-
-//     final response = await sslcommerz.payNow();
-
-//     if (response.status == 'VALID') {
-//       debugPrint('SslCommerz completed, TRX ID: ${response.tranId}');
-//       return true;
-//     } else {
-//       debugPrint('SslCommerz status: ${response.status}');
-//       return false;
-//     }
-//   } catch (e) {
-//     debugPrint('SslCommerz error: $e');
-//     return false;
-//   }
-// }
-
-// filepath: /home/sourav/BarberApp/barberapp/lib/views/checkout/helpers/payment_helper.dart
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MissingPluginException;
@@ -258,8 +130,7 @@ Future<bool> _uddoktaPay(
   String description,
 ) async {
   const webCheckoutBase = 'https://your-checkout.example.com/uddokta';
-  const redirectUrl = 'https://your-redirect.example.com';
-  const cancelUrl = 'https://your-cancel.example.com';
+  // web/native redirect/cancel URLs can be configured here if needed
 
   // Web flow
   if (kIsWeb) {
@@ -344,9 +215,9 @@ Future<bool> _sslCommerz(
       multi_card_name: "visa,master,bkash",
       currency: SSLCurrencyType.BDT,
       product_category: "Service",
-      sdkType: SSLCSdkType.TESTBOX, // ⚠️ Change to PRODUCTION in release
-      store_id: "trime68e81f8f7f99f", // Replace
-      store_passwd: "trime68e81f8f7f99f@ssl", // Replace
+      sdkType: SSLCSdkType.TESTBOX, // Change to PRODUCTION in release
+      store_id: "trime68e81f8f7f99f", 
+      store_passwd: "trime68e81f8f7f99f@ssl", 
       total_amount: amount,
       tran_id: invoice,
     );
