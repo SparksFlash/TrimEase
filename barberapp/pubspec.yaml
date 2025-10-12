@@ -1,13 +1,11 @@
 name: barberapp
 description: "A new Flutter project."
-# The following line prevents the package from being accidentally published to
-# pub.dev using `flutter pub publish`. This is preferred for private packages.
-publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+publish_to: 'none'
 
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.8.1
+  sdk: '>=3.7.0 <4.0.0'
 
 dependencies:
   flutter:
@@ -33,19 +31,25 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.12.0
 
 flutter:
-
-  # Ensures Material Icons are included
   uses-material-design: true
 
-  # Assets section
   assets:
     - images/
+    - assets/images/
     - assets/fonts/
 
-  # Custom fonts section
   fonts:
     - family: Pacifico
       fonts:
         - asset: assets/fonts/Pacifico-Regular.ttf
+
+# Configuration for flutter_launcher_icons (top-level)
+flutter_icons:
+  android: true
+  ios: true
+  image_path: images/Shop-Logo.png
+  adaptive_icon_background: '#FFFFFF'
+  remove_alpha_ios: true
