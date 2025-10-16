@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
+import 'package:firebase_core/firebase_core.dart' as firebase_core;
 import 'package:flutter/material.dart';
 import '../../payment/checkout.dart';
 
@@ -11,13 +12,28 @@ class BookingPage extends StatefulWidget {
 }
 
 class _BookingPageState extends State<BookingPage> {
-  final _fire = FirebaseFirestore.instance;
-  final _user = fb_auth.FirebaseAuth.instance.currentUser;
+  late final FirebaseFirestore _fire;
+  fb_auth.User? _user;
 
   String? _selectedShopId;
   Map<String, String>? _selectedBarber; // {id, name}
   Map<String, dynamic>? _selectedService; // doc data
-  DateTime? _selectedDateTime;
+  DateTime? _selectedDate;
+  String? _selectedSlotId;
+
+  // 12 slots from 9-10am to 8-9pm
+  final List<Map<String, dynamic>> _timeSlots = List.generate(12, (i) {
+    final start = 9 + i;
+    final end = start + 1;
+    final label =
+        '${start.toString().padLeft(2, '0')}:00 - ${end.toString().padLeft(2, '0')}:00';
+    final id =
+        '${start.toString().padLeft(2, '0')}-${end.toString().padLeft(2, '0')}';
+    return {'id': id, 'label': label, 'start': start};
+  });
+
+  // booked slot ids for selected barber/date
+  Set<String> _bookedSlotIds = {};
 
   List<Map<String, String>> _shops = [];
   List<Map<String, String>> _barbers = [];
@@ -27,49 +43,61 @@ class _BookingPageState extends State<BookingPage> {
   @override
   void initState() {
     super.initState();
+    try {
+      _fire = FirebaseFirestore.instance;
+      if (firebase_core.Firebase.apps.isNotEmpty) {
+        _user = fb_auth.FirebaseAuth.instance.currentUser;
+      }
+    } catch (_) {
+      _fire = FirebaseFirestore.instance;
+      _user = null;
+    }
     _loadShops();
   }
 
   Future<void> _loadShops() async {
     final snap = await _fire.collection('shop').get();
-    final list = snap.docs
-        .map(
-          (d) => {
-            'id': d.id,
-            'name': (d.data()['shopName'] ?? d.id).toString(),
-          },
-        )
-        .toList();
+    final list =
+        snap.docs
+            .map(
+              (d) => {
+                'id': d.id,
+                'name': (d.data()['shopName'] ?? d.id).toString(),
+              },
+            )
+            .toList();
     setState(() => _shops = List<Map<String, String>>.from(list));
   }
 
   Future<void> _loadBarbers(String shopId) async {
-    final snap = await _fire
-        .collection('shop')
-        .doc(shopId)
-        .collection('barber')
-        .get();
-    final list = snap.docs
-        .map((d) => {'id': d.id, 'name': (d.data()['name'] ?? d.id).toString()})
-        .toList();
+    final snap =
+        await _fire.collection('shop').doc(shopId).collection('barber').get();
+    final list =
+        snap.docs
+            .map(
+              (d) => {
+                'id': d.id,
+                'name': (d.data()['name'] ?? d.id).toString(),
+              },
+            )
+            .toList();
     setState(() => _barbers = List<Map<String, String>>.from(list));
   }
 
   Future<void> _loadServices(String shopId) async {
-    final snap = await _fire
-        .collection('shop')
-        .doc(shopId)
-        .collection('services')
-        .get();
-    final list = snap.docs.map((d) {
-      final m = d.data();
-      m['id'] = d.id;
-      return m;
-    }).toList();
+    final snap =
+        await _fire.collection('shop').doc(shopId).collection('services').get();
+    final list =
+        snap.docs.map((d) {
+          final m = d.data();
+          m['id'] = d.id;
+          return m;
+        }).toList();
     setState(() => _services = List<Map<String, dynamic>>.from(list));
   }
 
   Future<void> _pickDateTime() async {
+    // Deprecated: replaced by date-only picker + slot selection UI.
     final date = await showDatePicker(
       context: context,
       initialDate: DateTime.now(),
@@ -77,20 +105,49 @@ class _BookingPageState extends State<BookingPage> {
       lastDate: DateTime.now().add(const Duration(days: 60)),
     );
     if (date == null) return;
-    final time = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.now(),
-    );
-    if (time == null) return;
-    setState(
-      () => _selectedDateTime = DateTime(
-        date.year,
-        date.month,
-        date.day,
-        time.hour,
-        time.minute,
-      ),
-    );
+    setState(() {
+      _selectedDate = DateTime(date.year, date.month, date.day);
+      _selectedSlotId = null;
+    });
+    // fetch booked slots for selected barber+date
+    if (_selectedBarber != null && _selectedShopId != null) {
+      await _fetchBookedSlots(
+        _selectedShopId!,
+        _selectedBarber!['id']!,
+        _selectedDate!,
+      );
+    }
+  }
+
+  Future<void> _fetchBookedSlots(
+    String shopId,
+    String barberId,
+    DateTime date,
+  ) async {
+    // normalize date to yyyy-mm-dd string for equality
+    final dayStr =
+        '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    try {
+      final snap =
+          await _fire
+              .collection('shop')
+              .doc(shopId)
+              .collection('bookings')
+              .where('barberId', isEqualTo: barberId)
+              .where('status', isEqualTo: 'confirmed')
+              .where('scheduledDate', isEqualTo: dayStr)
+              .get();
+
+      final ids = <String>{};
+      for (final d in snap.docs) {
+        final slot = (d.data()['slotId'] ?? '').toString();
+        if (slot.isNotEmpty) ids.add(slot);
+      }
+      setState(() => _bookedSlotIds = ids);
+    } catch (e) {
+      debugPrint('Failed to fetch booked slots: $e');
+      setState(() => _bookedSlotIds = {});
+    }
   }
 
   Future<void> _makeBooking() async {
@@ -100,7 +157,8 @@ class _BookingPageState extends State<BookingPage> {
     if (_selectedShopId == null ||
         _selectedBarber == null ||
         _selectedService == null ||
-        _selectedDateTime == null) {
+        _selectedDate == null ||
+        _selectedSlotId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please select shop, barber, service and time'),
@@ -116,23 +174,26 @@ class _BookingPageState extends State<BookingPage> {
     final barberName = (_selectedBarber!['name'] ?? 'Barber').toString();
     final serviceId = _selectedService!['id'];
     final serviceTitle = (_selectedService!['title'] ?? 'Service').toString();
-    final price = (_selectedService!['price'] is num)
-        ? (_selectedService!['price'] as num).toDouble()
-        : double.tryParse((_selectedService!['price'] ?? '').toString()) ?? 0.0;
+    final price =
+        (_selectedService!['price'] is num)
+            ? (_selectedService!['price'] as num).toDouble()
+            : double.tryParse((_selectedService!['price'] ?? '').toString()) ??
+                0.0;
 
-    final chosen = _selectedDateTime!;
+    final chosenDate = _selectedDate!;
+    final slotId = _selectedSlotId!;
 
-    final lower = Timestamp.fromDate(
-      chosen.subtract(const Duration(minutes: 59)),
-    );
-    final upper = Timestamp.fromDate(chosen.add(const Duration(minutes: 60)));
+    // For backwards compatibility we store scheduledDate (yyyy-mm-dd) and slotId
+    final scheduledDateStr =
+        '${chosenDate.year.toString().padLeft(4, '0')}-${chosenDate.month.toString().padLeft(2, '0')}-${chosenDate.day.toString().padLeft(2, '0')}';
 
     // create provisional booking ref+data
-    final provRef = _fire
-        .collection('shop')
-        .doc(_selectedShopId)
-        .collection('bookings')
-        .doc();
+    final provRef =
+        _fire
+            .collection('shop')
+            .doc(_selectedShopId)
+            .collection('bookings')
+            .doc();
     final provData = {
       'customerId': uid,
       'customerEmail': email,
@@ -142,7 +203,17 @@ class _BookingPageState extends State<BookingPage> {
       'serviceId': serviceId,
       'serviceTitle': serviceTitle,
       'price': price,
-      'scheduledAt': Timestamp.fromDate(chosen),
+      'scheduledDate': scheduledDateStr,
+      'slotId': slotId,
+      // Keep scheduledAt for compatibility (set to start hour of slot)
+      'scheduledAt': Timestamp.fromDate(
+        DateTime(
+          chosenDate.year,
+          chosenDate.month,
+          chosenDate.day,
+          int.parse(slotId.split('-')[0]),
+        ),
+      ),
       'status': 'provisional',
       'booking_confirmed': false,
       'createdAt': FieldValue.serverTimestamp(),
@@ -157,21 +228,22 @@ class _BookingPageState extends State<BookingPage> {
     // hide spinner so checkout appears immediately
     if (mounted) setState(() => _processing = false);
 
-    final desc =
-        '$serviceTitle on ${chosen.toLocal().toString().split(' ')[0]} at ${chosen.toLocal().toString().split(' ')[1].substring(0, 5)}';
+    final slotLabel = _timeSlots.firstWhere((s) => s['id'] == slotId)['label'];
+    final desc = '$serviceTitle on $scheduledDateStr at $slotLabel';
 
     bool? paid;
     try {
       paid = await Navigator.push<bool>(
         context,
         MaterialPageRoute(
-          builder: (_) => PaymentCheckout(
-            serviceName: serviceTitle,
-            date: chosen,
-            time: chosen.toLocal().toString().split(' ')[1].substring(0, 5),
-            amount: price > 0 ? price : 500.0,
-            description: desc,
-          ),
+          builder:
+              (_) => PaymentCheckout(
+                serviceName: serviceTitle,
+                date: DateTime.parse(scheduledDateStr),
+                time: slotLabel,
+                amount: price > 0 ? price : 500.0,
+                description: desc,
+              ),
         ),
       );
     } catch (e) {
@@ -213,58 +285,18 @@ class _BookingPageState extends State<BookingPage> {
           final snap = await tx.get(centralRef);
           if (!snap.exists) throw Exception('Provisional booking missing');
 
-          // Re-check conflicts inside the transaction
-          // Some composite queries require an index; try the range query first
-          // and fall back to an equality-only query + client-side filter if
-          // Firestore complains about a missing index.
-          bool conflictFound = false;
-          try {
-            final conflicts = await _fire
-                .collection('shop')
-                .doc(_selectedShopId)
-                .collection('bookings')
-                .where('barberId', isEqualTo: barberId)
-                .where('status', isEqualTo: 'confirmed')
-                .where('scheduledAt', isGreaterThanOrEqualTo: lower)
-                .where('scheduledAt', isLessThan: upper)
-                .get();
-
-            if (conflicts.docs.isNotEmpty) conflictFound = true;
-          } catch (e) {
-            // If Firestore requires a composite index the SDK may throw a
-            // failed-precondition / permission error; fall back to fetching
-            // confirmed bookings for this barber and filter locally.
-            debugPrint(
-              'Range query failed, falling back to client-side filter: $e',
-            );
-            try {
-              final alt = await _fire
+          // Re-check conflicts: ensure no confirmed booking exists with same barber, date and slotId
+          final conflicts =
+              await _fire
                   .collection('shop')
                   .doc(_selectedShopId)
                   .collection('bookings')
                   .where('barberId', isEqualTo: barberId)
                   .where('status', isEqualTo: 'confirmed')
+                  .where('scheduledDate', isEqualTo: scheduledDateStr)
+                  .where('slotId', isEqualTo: slotId)
                   .get();
-
-              for (final d in alt.docs) {
-                final ts = d.data()['scheduledAt'];
-                if (ts is Timestamp) {
-                  final dt = ts.toDate();
-                  if (!dt.isBefore(lower.toDate()) &&
-                      dt.isBefore(upper.toDate())) {
-                    conflictFound = true;
-                    break;
-                  }
-                }
-              }
-            } catch (e2) {
-              // If fallback also fails, propagate to abort the transaction
-              debugPrint('Fallback conflict check failed: $e2');
-              rethrow;
-            }
-          }
-
-          if (conflictFound) {
+          if (conflicts.docs.isNotEmpty) {
             tx.delete(centralRef);
             throw Exception('Conflict while confirming booking');
           }
@@ -292,11 +324,12 @@ class _BookingPageState extends State<BookingPage> {
             'booking_confirmed': true,
           });
 
-          final payRef = _fire
-              .collection('shop')
-              .doc(_selectedShopId)
-              .collection('payments')
-              .doc();
+          final payRef =
+              _fire
+                  .collection('shop')
+                  .doc(_selectedShopId)
+                  .collection('payments')
+                  .doc();
           tx.set(payRef, {
             'bookingId': provRef.id,
             'userId': uid,
@@ -351,14 +384,15 @@ class _BookingPageState extends State<BookingPage> {
           children: [
             DropdownButtonFormField<String>(
               decoration: const InputDecoration(labelText: 'Select shop'),
-              items: _shops
-                  .map(
-                    (s) => DropdownMenuItem(
-                      value: s['id'],
-                      child: Text(s['name']!),
-                    ),
-                  )
-                  .toList(),
+              items:
+                  _shops
+                      .map(
+                        (s) => DropdownMenuItem(
+                          value: s['id'],
+                          child: Text(s['name']!),
+                        ),
+                      )
+                      .toList(),
               value: _selectedShopId,
               onChanged: (v) async {
                 setState(() {
@@ -375,70 +409,104 @@ class _BookingPageState extends State<BookingPage> {
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               decoration: const InputDecoration(labelText: 'Choose barber'),
-              items: _barbers
-                  .map(
-                    (b) => DropdownMenuItem(
-                      value: b['id'],
-                      child: Text(b['name']!),
-                    ),
-                  )
-                  .toList(),
+              items:
+                  _barbers
+                      .map(
+                        (b) => DropdownMenuItem(
+                          value: b['id'],
+                          child: Text(b['name']!),
+                        ),
+                      )
+                      .toList(),
               value: _selectedBarber?['id'],
-              onChanged: (v) {
+              onChanged: (v) async {
                 setState(() {
                   _selectedBarber = _barbers.firstWhere((b) => b['id'] == v);
+                  _selectedSlotId = null;
+                  _bookedSlotIds = {};
                 });
+                if (v != null &&
+                    _selectedDate != null &&
+                    _selectedShopId != null) {
+                  await _fetchBookedSlots(_selectedShopId!, v, _selectedDate!);
+                }
               },
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               decoration: const InputDecoration(labelText: 'Choose service'),
-              items: _services
-                  .map(
-                    (s) => DropdownMenuItem<String>(
-                      value: s['id'].toString(),
-                      child: Text('${s['title']} - ৳${s['price']}'),
-                    ),
-                  )
-                  .toList(),
+              items:
+                  _services
+                      .map(
+                        (s) => DropdownMenuItem<String>(
+                          value: s['id'].toString(),
+                          child: Text('${s['title']} - ৳${s['price']}'),
+                        ),
+                      )
+                      .toList(),
               value: _selectedService?['id']?.toString(),
               onChanged: (v) {
                 if (v == null) return;
                 setState(
-                  () => _selectedService = _services.firstWhere(
-                    (s) => s['id'].toString() == v,
-                  ),
+                  () =>
+                      _selectedService = _services.firstWhere(
+                        (s) => s['id'].toString() == v,
+                      ),
                 );
               },
             ),
             const SizedBox(height: 12),
             ListTile(
-              title: const Text('Date & Time'),
+              title: const Text('Select date'),
               subtitle: Text(
-                _selectedDateTime != null
-                    ? _selectedDateTime.toString()
+                _selectedDate != null
+                    ? _selectedDate!.toLocal().toString().split(' ')[0]
                     : 'Not selected',
               ),
               trailing: ElevatedButton(
                 onPressed: _pickDateTime,
-                child: const Text('Pick'),
+                child: const Text('Pick Date'),
               ),
+            ),
+            const SizedBox(height: 8),
+            // Slot grid
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children:
+                  _timeSlots.map((s) {
+                    final id = s['id'] as String;
+                    final label = s['label'] as String;
+                    final booked = _bookedSlotIds.contains(id);
+                    final selected = _selectedSlotId == id;
+                    return ChoiceChip(
+                      label: Text(label),
+                      selected: selected,
+                      onSelected: (on) async {
+                        if (booked) return;
+                        setState(() => _selectedSlotId = on ? id : null);
+                      },
+                      selectedColor: Colors.blue,
+                      backgroundColor: booked ? Colors.grey.shade300 : null,
+                    );
+                  }).toList(),
             ),
             const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
                 onPressed: _makeBooking,
-                child: _processing
-                    ? const SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : const Text('Confirm Booking'),
+                child:
+                    _processing
+                        ? const SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                        : const Text('Confirm Booking'),
               ),
             ),
           ],

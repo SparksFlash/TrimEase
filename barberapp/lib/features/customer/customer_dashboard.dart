@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
+import 'package:firebase_core/firebase_core.dart' as firebase_core;
 import 'package:flutter/material.dart';
 import 'services_page.dart';
 import 'booking_page.dart';
@@ -19,8 +20,16 @@ class _CustomerDashboardState extends State<CustomerDashboard> {
   @override
   void initState() {
     super.initState();
-    final user = fb_auth.FirebaseAuth.instance.currentUser;
-    _uid = user?.uid ?? '';
+    try {
+      if (firebase_core.Firebase.apps.isEmpty) {
+        _uid = '';
+      } else {
+        final user = fb_auth.FirebaseAuth.instance.currentUser;
+        _uid = user?.uid ?? '';
+      }
+    } catch (_) {
+      _uid = '';
+    }
   }
 
   String _formatPhone(String input) {
@@ -97,69 +106,75 @@ class _CustomerDashboardState extends State<CustomerDashboard> {
                       children: [
                         Expanded(
                           child: OutlinedButton(
-                            onPressed: loading
-                                ? null
-                                : () => Navigator.of(dctx).pop(false),
+                            onPressed:
+                                loading
+                                    ? null
+                                    : () => Navigator.of(dctx).pop(false),
                             child: const Text('Cancel'),
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: ElevatedButton(
-                            onPressed: loading
-                                ? null
-                                : () async {
-                                    final phone = phoneCtrl.text.trim();
-                                    if (phone.isNotEmpty &&
-                                        !_isValidPhone(phone)) {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text('Enter valid phone'),
-                                        ),
-                                      );
-                                      return;
-                                    }
-                                    setState(() => loading = true);
-                                    try {
-                                      final updates = <String, dynamic>{};
-                                      if (nameCtrl.text.trim().isNotEmpty)
-                                        updates['name'] = nameCtrl.text.trim();
-                                      if (phone.isNotEmpty)
-                                        updates['phone'] = _formatPhone(phone);
-                                      if (addressCtrl.text.trim().isNotEmpty)
-                                        updates['address'] = addressCtrl.text
-                                            .trim();
-                                      if (updates.isNotEmpty) {
-                                        await FirebaseFirestore.instance
-                                            .collection('users')
-                                            .doc(_uid)
-                                            .set(
-                                              updates,
-                                              SetOptions(merge: true),
-                                            );
+                            onPressed:
+                                loading
+                                    ? null
+                                    : () async {
+                                      final phone = phoneCtrl.text.trim();
+                                      if (phone.isNotEmpty &&
+                                          !_isValidPhone(phone)) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Enter valid phone'),
+                                          ),
+                                        );
+                                        return;
                                       }
-                                      Navigator.of(dctx).pop(true);
-                                    } catch (e) {
-                                      setState(() => loading = false);
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(content: Text('Failed: $e')),
-                                      );
-                                    }
-                                  },
-                            child: loading
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Text('Save'),
+                                      setState(() => loading = true);
+                                      try {
+                                        final updates = <String, dynamic>{};
+                                        if (nameCtrl.text.trim().isNotEmpty)
+                                          updates['name'] =
+                                              nameCtrl.text.trim();
+                                        if (phone.isNotEmpty)
+                                          updates['phone'] = _formatPhone(
+                                            phone,
+                                          );
+                                        if (addressCtrl.text.trim().isNotEmpty)
+                                          updates['address'] =
+                                              addressCtrl.text.trim();
+                                        if (updates.isNotEmpty) {
+                                          await FirebaseFirestore.instance
+                                              .collection('users')
+                                              .doc(_uid)
+                                              .set(
+                                                updates,
+                                                SetOptions(merge: true),
+                                              );
+                                        }
+                                        Navigator.of(dctx).pop(true);
+                                      } catch (e) {
+                                        setState(() => loading = false);
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(content: Text('Failed: $e')),
+                                        );
+                                      }
+                                    },
+                            child:
+                                loading
+                                    ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                    : const Text('Save'),
                           ),
                         ),
                       ],
@@ -197,20 +212,21 @@ class _CustomerDashboardState extends State<CustomerDashboard> {
             onPressed: () async {
               final ok = await showDialog<bool>(
                 context: context,
-                builder: (c) => AlertDialog(
-                  title: const Text('Logout'),
-                  content: const Text('Are you sure you want to logout?'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(c).pop(false),
-                      child: const Text('Cancel'),
+                builder:
+                    (c) => AlertDialog(
+                      title: const Text('Logout'),
+                      content: const Text('Are you sure you want to logout?'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(c).pop(false),
+                          child: const Text('Cancel'),
+                        ),
+                        ElevatedButton(
+                          onPressed: () => Navigator.of(c).pop(true),
+                          child: const Text('Logout'),
+                        ),
+                      ],
                     ),
-                    ElevatedButton(
-                      onPressed: () => Navigator.of(c).pop(true),
-                      child: const Text('Logout'),
-                    ),
-                  ],
-                ),
               );
               if (ok != true) return;
               await fb_auth.FirebaseAuth.instance.signOut();
@@ -227,10 +243,11 @@ class _CustomerDashboardState extends State<CustomerDashboard> {
         ],
       ),
       body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('users')
-            .doc(_uid)
-            .snapshots(),
+        stream:
+            FirebaseFirestore.instance
+                .collection('users')
+                .doc(_uid)
+                .snapshots(),
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting)
             return const Center(child: CircularProgressIndicator());
@@ -419,11 +436,12 @@ class _CustomerDashboardState extends State<CustomerDashboard> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: InkWell(
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const BookingPage(),
-                            ),
-                          ),
+                          onTap:
+                              () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const BookingPage(),
+                                ),
+                              ),
                           borderRadius: BorderRadius.circular(12),
                           child: Container(
                             padding: const EdgeInsets.all(16),
@@ -473,11 +491,12 @@ class _CustomerDashboardState extends State<CustomerDashboard> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: InkWell(
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const MyBookingsPage(),
-                            ),
-                          ),
+                          onTap:
+                              () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const MyBookingsPage(),
+                                ),
+                              ),
                           borderRadius: BorderRadius.circular(12),
                           child: Container(
                             padding: const EdgeInsets.all(16),
@@ -540,14 +559,15 @@ class _CustomerDashboardState extends State<CustomerDashboard> {
   Future<void> _openServices(BuildContext context) async {
     // let user pick a shop, then open ServicesPage
     final shopsSnap = await FirebaseFirestore.instance.collection('shop').get();
-    final shops = shopsSnap.docs
-        .map(
-          (d) => {
-            'id': d.id,
-            'name': (d.data()['shopName'] ?? d.id).toString(),
-          },
-        )
-        .toList();
+    final shops =
+        shopsSnap.docs
+            .map(
+              (d) => {
+                'id': d.id,
+                'name': (d.data()['shopName'] ?? d.id).toString(),
+              },
+            )
+            .toList();
     String? selected;
     await showDialog<void>(
       context: context,
@@ -589,9 +609,10 @@ class _CustomerDashboardState extends State<CustomerDashboard> {
     final barberId = (data['barberId'] ?? '').toString();
     final serviceTitle = (data['serviceTitle'] ?? '').toString();
     final scheduledAt = (data['scheduledAt'] as Timestamp?)?.toDate();
-    final amount = (data['price'] is num)
-        ? (data['price'] as num).toDouble()
-        : double.tryParse((data['price'] ?? '').toString()) ?? 0.0;
+    final amount =
+        (data['price'] is num)
+            ? (data['price'] as num).toDouble()
+            : double.tryParse((data['price'] ?? '').toString()) ?? 0.0;
 
     if (shopId.isEmpty || barberId.isEmpty || scheduledAt == null) {
       if (mounted)
@@ -607,13 +628,18 @@ class _CustomerDashboardState extends State<CustomerDashboard> {
     final paid = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => PaymentCheckout(
-          serviceName: serviceTitle,
-          date: scheduledAt,
-          time: scheduledAt.toLocal().toString().split(' ')[1].substring(0, 5),
-          amount: amount > 0 ? amount : 500.0,
-          description: desc,
-        ),
+        builder:
+            (_) => PaymentCheckout(
+              serviceName: serviceTitle,
+              date: scheduledAt,
+              time: scheduledAt
+                  .toLocal()
+                  .toString()
+                  .split(' ')[1]
+                  .substring(0, 5),
+              amount: amount > 0 ? amount : 500.0,
+              description: desc,
+            ),
       ),
     );
 
@@ -661,11 +687,12 @@ class _CustomerDashboardState extends State<CustomerDashboard> {
         });
 
         // write payment record under shop/<shopId>/payments/<paymentId>
-        final payRef = FirebaseFirestore.instance
-            .collection('shop')
-            .doc(shopId)
-            .collection('payments')
-            .doc();
+        final payRef =
+            FirebaseFirestore.instance
+                .collection('shop')
+                .doc(shopId)
+                .collection('payments')
+                .doc();
         tx.set(payRef, {
           'bookingId': bookingRef.id,
           'userId': userId,

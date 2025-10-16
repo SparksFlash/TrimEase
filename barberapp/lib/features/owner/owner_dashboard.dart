@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
+import 'package:firebase_core/firebase_core.dart' as firebase_core;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../auth/provider/auth_provider.dart';
@@ -21,8 +22,18 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
   @override
   void initState() {
     super.initState();
-    final user = fb_auth.FirebaseAuth.instance.currentUser;
-    _uid = user?.uid ?? '';
+    // Avoid accessing FirebaseAuth.instance during construction; it can throw
+    // on web when Firebase isn't initialized. Read lazily if available.
+    try {
+      if (firebase_core.Firebase.apps.isEmpty) {
+        _uid = '';
+      } else {
+        final user = fb_auth.FirebaseAuth.instance.currentUser;
+        _uid = user?.uid ?? '';
+      }
+    } catch (_) {
+      _uid = '';
+    }
   }
 
   @override
@@ -56,10 +67,8 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
         ],
       ),
       body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('shop')
-            .doc(_uid)
-            .snapshots(),
+        stream:
+            FirebaseFirestore.instance.collection('shop').doc(_uid).snapshots(),
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -183,11 +192,12 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                               ),
                               IconButton(
                                 icon: const Icon(Icons.edit, size: 18),
-                                onPressed: () => _showEditShopDialog(
-                                  context,
-                                  contact,
-                                  address,
-                                ),
+                                onPressed:
+                                    () => _showEditShopDialog(
+                                      context,
+                                      contact,
+                                      address,
+                                    ),
                               ),
                             ],
                           ),
@@ -267,31 +277,37 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                           icon: Icons.account_balance_wallet,
                           title: 'Account',
                           subtitle: 'Accessories & Salaries',
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => AccountManagement(shopId: _uid),
-                            ),
-                          ),
+                          onTap:
+                              () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder:
+                                      (_) => AccountManagement(shopId: _uid),
+                                ),
+                              ),
                         ),
                         _FeatureTile(
                           icon: Icons.person_search,
                           title: 'Barbers',
                           subtitle: 'Manage barbers',
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => BarberManagement(shopId: _uid),
-                            ),
-                          ),
+                          onTap:
+                              () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder:
+                                      (_) => BarberManagement(shopId: _uid),
+                                ),
+                              ),
                         ),
                         _FeatureTile(
                           icon: Icons.design_services,
                           title: 'Services',
                           subtitle: 'Add / Remove',
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => ServiceManagement(shopId: _uid),
-                            ),
-                          ),
+                          onTap:
+                              () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder:
+                                      (_) => ServiceManagement(shopId: _uid),
+                                ),
+                              ),
                         ),
                       ],
                     ),
@@ -338,10 +354,8 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     final addressCtrl = TextEditingController(text: currentAddress);
 
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('shop')
-          .doc(_uid)
-          .get();
+      final doc =
+          await FirebaseFirestore.instance.collection('shop').doc(_uid).get();
       if (doc.exists) {
         final map = doc.data();
         if (map != null) {
@@ -523,10 +537,11 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                                 borderSide: BorderSide.none,
                               ),
                             ),
-                            onChanged: (v) => setState(() {
-                              // live format preview (no direct text overwrite to avoid caret jumps)
-                              _formatPhoneLive(v);
-                            }),
+                            onChanged:
+                                (v) => setState(() {
+                                  // live format preview (no direct text overwrite to avoid caret jumps)
+                                  _formatPhoneLive(v);
+                                }),
                             validator: (v) {
                               if (v == null) return null;
                               if (v.trim().isEmpty) return null;
@@ -567,9 +582,10 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                                 borderRadius: BorderRadius.circular(8),
                               ),
                             ),
-                            onPressed: loading
-                                ? null
-                                : () => Navigator.of(ctx).pop(false),
+                            onPressed:
+                                loading
+                                    ? null
+                                    : () => Navigator.of(ctx).pop(false),
                             child: const Text('Cancel'),
                           ),
                         ),
@@ -582,101 +598,106 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                                 borderRadius: BorderRadius.circular(8),
                               ),
                             ),
-                            onPressed: loading
-                                ? null
-                                : () async {
-                                    if (!(formKey.currentState?.validate() ??
-                                        false))
-                                      return;
-                                    final newShop = shopNameCtrl.text.trim();
-                                    final newOwner = ownerNameCtrl.text.trim();
-                                    final newContact = contactCtrl.text.trim();
-                                    final newAddress = addressCtrl.text.trim();
+                            onPressed:
+                                loading
+                                    ? null
+                                    : () async {
+                                      if (!(formKey.currentState?.validate() ??
+                                          false))
+                                        return;
+                                      final newShop = shopNameCtrl.text.trim();
+                                      final newOwner =
+                                          ownerNameCtrl.text.trim();
+                                      final newContact =
+                                          contactCtrl.text.trim();
+                                      final newAddress =
+                                          addressCtrl.text.trim();
 
-                                    if (newShop.isEmpty &&
-                                        newOwner.isEmpty &&
-                                        newContact.isEmpty &&
-                                        newAddress.isEmpty) {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            'Enter at least one field to update',
+                                      if (newShop.isEmpty &&
+                                          newOwner.isEmpty &&
+                                          newContact.isEmpty &&
+                                          newAddress.isEmpty) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              'Enter at least one field to update',
+                                            ),
                                           ),
-                                        ),
-                                      );
-                                      return;
-                                    }
-
-                                    if (newContact.isNotEmpty &&
-                                        !isValidPhone(newContact)) {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            'Enter a valid phone number',
-                                          ),
-                                        ),
-                                      );
-                                      return;
-                                    }
-
-                                    setState(() => loading = true);
-                                    try {
-                                      final updates = <String, dynamic>{};
-                                      if (newShop.isNotEmpty)
-                                        updates['shopName'] = newShop;
-                                      if (newOwner.isNotEmpty)
-                                        updates['ownerName'] = newOwner;
-                                      if (newContact.isNotEmpty)
-                                        updates['contact'] = _formatPhoneLive(
-                                          newContact,
                                         );
-                                      if (newAddress.isNotEmpty)
-                                        updates['address'] = newAddress;
-
-                                      if (updates.isNotEmpty) {
-                                        await FirebaseFirestore.instance
-                                            .collection('shop')
-                                            .doc(_uid)
-                                            .update(updates);
-                                        await FirebaseFirestore.instance
-                                            .collection('shop')
-                                            .doc(_uid)
-                                            .collection('activity')
-                                            .add({
-                                              'type': 'update_details',
-                                              'changes': updates,
-                                              'updatedBy': _uid,
-                                              'timestamp':
-                                                  FieldValue.serverTimestamp(),
-                                            });
+                                        return;
                                       }
 
-                                      Navigator.of(ctx).pop(true);
-                                    } catch (e) {
-                                      setState(() => loading = false);
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text('Failed to save: $e'),
-                                        ),
-                                      );
-                                    }
-                                  },
-                            child: loading
-                                ? const SizedBox(
-                                    height: 18,
-                                    width: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Text('Save changes'),
+                                      if (newContact.isNotEmpty &&
+                                          !isValidPhone(newContact)) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              'Enter a valid phone number',
+                                            ),
+                                          ),
+                                        );
+                                        return;
+                                      }
+
+                                      setState(() => loading = true);
+                                      try {
+                                        final updates = <String, dynamic>{};
+                                        if (newShop.isNotEmpty)
+                                          updates['shopName'] = newShop;
+                                        if (newOwner.isNotEmpty)
+                                          updates['ownerName'] = newOwner;
+                                        if (newContact.isNotEmpty)
+                                          updates['contact'] = _formatPhoneLive(
+                                            newContact,
+                                          );
+                                        if (newAddress.isNotEmpty)
+                                          updates['address'] = newAddress;
+
+                                        if (updates.isNotEmpty) {
+                                          await FirebaseFirestore.instance
+                                              .collection('shop')
+                                              .doc(_uid)
+                                              .update(updates);
+                                          await FirebaseFirestore.instance
+                                              .collection('shop')
+                                              .doc(_uid)
+                                              .collection('activity')
+                                              .add({
+                                                'type': 'update_details',
+                                                'changes': updates,
+                                                'updatedBy': _uid,
+                                                'timestamp':
+                                                    FieldValue.serverTimestamp(),
+                                              });
+                                        }
+
+                                        Navigator.of(ctx).pop(true);
+                                      } catch (e) {
+                                        setState(() => loading = false);
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text('Failed to save: $e'),
+                                          ),
+                                        );
+                                      }
+                                    },
+                            child:
+                                loading
+                                    ? const SizedBox(
+                                      height: 18,
+                                      width: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                    : const Text('Save changes'),
                           ),
                         ),
                       ],

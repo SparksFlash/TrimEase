@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
+import 'package:firebase_core/firebase_core.dart' as firebase_core;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../auth/provider/auth_provider.dart';
@@ -20,7 +21,15 @@ class _BarberDashboardState extends State<BarberDashboard> {
   @override
   void initState() {
     super.initState();
-    _user = fb_auth.FirebaseAuth.instance.currentUser;
+    try {
+      if (firebase_core.Firebase.apps.isEmpty) {
+        _user = null;
+      } else {
+        _user = fb_auth.FirebaseAuth.instance.currentUser;
+      }
+    } catch (_) {
+      _user = null;
+    }
   }
 
   Future<DocumentSnapshot<Map<String, dynamic>>?> _findBarberDoc() async {
@@ -38,36 +47,40 @@ class _BarberDashboardState extends State<BarberDashboard> {
       ) async {
         for (final g in groups) {
           try {
-            final q1 = await fire
-                .collectionGroup(g)
-                .where('uid', isEqualTo: uid)
-                .limit(1)
-                .get();
+            final q1 =
+                await fire
+                    .collectionGroup(g)
+                    .where('uid', isEqualTo: uid)
+                    .limit(1)
+                    .get();
             if (q1.docs.isNotEmpty)
               return q1.docs.first as DocumentSnapshot<Map<String, dynamic>>;
 
             if (email.isNotEmpty) {
-              final q2 = await fire
-                  .collectionGroup(g)
-                  .where('email', isEqualTo: email)
-                  .limit(1)
-                  .get();
+              final q2 =
+                  await fire
+                      .collectionGroup(g)
+                      .where('email', isEqualTo: email)
+                      .limit(1)
+                      .get();
               if (q2.docs.isNotEmpty)
                 return q2.docs.first as DocumentSnapshot<Map<String, dynamic>>;
 
               // try matching document id to email or uid (some older entries used email as doc id)
-              final q3 = await fire
-                  .collectionGroup(g)
-                  .where(FieldPath.documentId, isEqualTo: email)
-                  .limit(1)
-                  .get();
+              final q3 =
+                  await fire
+                      .collectionGroup(g)
+                      .where(FieldPath.documentId, isEqualTo: email)
+                      .limit(1)
+                      .get();
               if (q3.docs.isNotEmpty)
                 return q3.docs.first as DocumentSnapshot<Map<String, dynamic>>;
-              final q4 = await fire
-                  .collectionGroup(g)
-                  .where(FieldPath.documentId, isEqualTo: uid)
-                  .limit(1)
-                  .get();
+              final q4 =
+                  await fire
+                      .collectionGroup(g)
+                      .where(FieldPath.documentId, isEqualTo: uid)
+                      .limit(1)
+                      .get();
               if (q4.docs.isNotEmpty)
                 return q4.docs.first as DocumentSnapshot<Map<String, dynamic>>;
             }
@@ -97,10 +110,8 @@ class _BarberDashboardState extends State<BarberDashboard> {
               final d2 = await ref.doc(uid).get();
               if (d2.exists) return d2;
               // query by email/uid field
-              final q = await ref
-                  .where('email', isEqualTo: email)
-                  .limit(1)
-                  .get();
+              final q =
+                  await ref.where('email', isEqualTo: email).limit(1).get();
               if (q.docs.isNotEmpty)
                 return q.docs.first as DocumentSnapshot<Map<String, dynamic>>;
               final q2 = await ref.where('uid', isEqualTo: uid).limit(1).get();
@@ -159,8 +170,8 @@ class _BarberDashboardState extends State<BarberDashboard> {
                     ),
                     const SizedBox(height: 12),
                     Autocomplete<Map<String, String>>(
-                      displayStringForOption: (opt) =>
-                          opt['name'] ?? opt['id']!,
+                      displayStringForOption:
+                          (opt) => opt['name'] ?? opt['id']!,
                       optionsBuilder: (TextEditingValue txt) {
                         if (txt.text.isEmpty)
                           return const Iterable<Map<String, String>>.empty();
@@ -173,30 +184,35 @@ class _BarberDashboardState extends State<BarberDashboard> {
                       onSelected: (selection) {
                         _selectedShopId = selection['id'];
                       },
-                      fieldViewBuilder:
-                          (context, controller, focusNode, onFieldSubmitted) {
-                            controller.text = '';
-                            return TextField(
-                              controller: controller,
-                              focusNode: focusNode,
-                              decoration: const InputDecoration(
-                                labelText: 'Select your shop',
-                                prefixIcon: Icon(Icons.storefront),
-                              ),
-                            );
-                          },
+                      fieldViewBuilder: (
+                        context,
+                        controller,
+                        focusNode,
+                        onFieldSubmitted,
+                      ) {
+                        controller.text = '';
+                        return TextField(
+                          controller: controller,
+                          focusNode: focusNode,
+                          decoration: const InputDecoration(
+                            labelText: 'Select your shop',
+                            prefixIcon: Icon(Icons.storefront),
+                          ),
+                        );
+                      },
                       optionsViewBuilder: (context, onSelected, options) {
                         return Material(
                           elevation: 4,
                           child: ListView(
                             padding: EdgeInsets.zero,
                             shrinkWrap: true,
-                            children: options.map((opt) {
-                              return ListTile(
-                                title: Text(opt['name'] ?? opt['id']!),
-                                onTap: () => onSelected(opt),
-                              );
-                            }).toList(),
+                            children:
+                                options.map((opt) {
+                                  return ListTile(
+                                    title: Text(opt['name'] ?? opt['id']!),
+                                    onTap: () => onSelected(opt),
+                                  );
+                                }).toList(),
                           ),
                         );
                       },
@@ -205,70 +221,74 @@ class _BarberDashboardState extends State<BarberDashboard> {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        onPressed: _linkingLoading
-                            ? null
-                            : () async {
-                                if (_selectedShopId == null) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Please select a shop'),
-                                    ),
-                                  );
-                                  return;
-                                }
-                                setState(() => _linkingLoading = true);
-                                try {
-                                  final shopDoc = await FirebaseFirestore
-                                      .instance
-                                      .collection('shop')
-                                      .doc(_selectedShopId)
-                                      .get();
-                                  final shopName = shopDoc.exists
-                                      ? (shopDoc.data()?['shopName'] ?? '')
-                                            .toString()
-                                      : '';
-                                  final uid = _user?.uid ?? '';
-                                  final email = _user?.email ?? '';
-                                  final barberRef = FirebaseFirestore.instance
-                                      .collection('shop')
-                                      .doc(_selectedShopId)
-                                      .collection('barber')
-                                      .doc(email.isNotEmpty ? email : uid);
-                                  await barberRef.set({
-                                    'uid': uid,
-                                    'email': email,
-                                    'shopId': _selectedShopId,
-                                    'shopName': shopName,
-                                    'createdAt': FieldValue.serverTimestamp(),
-                                  });
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Linked to shop successfully',
+                        onPressed:
+                            _linkingLoading
+                                ? null
+                                : () async {
+                                  if (_selectedShopId == null) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Please select a shop'),
                                       ),
-                                    ),
-                                  );
-                                  // refresh by rebuilding widget (future will re-run)
-                                  setState(() => _linkingLoading = false);
-                                } catch (e) {
-                                  setState(() => _linkingLoading = false);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('Failed to link: $e'),
-                                    ),
-                                  );
-                                }
-                              },
-                        child: _linkingLoading
-                            ? const SizedBox(
-                                height: 18,
-                                width: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Text('Link to selected shop'),
+                                    );
+                                    return;
+                                  }
+                                  setState(() => _linkingLoading = true);
+                                  try {
+                                    final shopDoc =
+                                        await FirebaseFirestore.instance
+                                            .collection('shop')
+                                            .doc(_selectedShopId)
+                                            .get();
+                                    final shopName =
+                                        shopDoc.exists
+                                            ? (shopDoc.data()?['shopName'] ??
+                                                    '')
+                                                .toString()
+                                            : '';
+                                    final uid = _user?.uid ?? '';
+                                    final email = _user?.email ?? '';
+                                    final barberRef = FirebaseFirestore.instance
+                                        .collection('shop')
+                                        .doc(_selectedShopId)
+                                        .collection('barber')
+                                        .doc(email.isNotEmpty ? email : uid);
+                                    await barberRef.set({
+                                      'uid': uid,
+                                      'email': email,
+                                      'shopId': _selectedShopId,
+                                      'shopName': shopName,
+                                      'createdAt': FieldValue.serverTimestamp(),
+                                    });
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Linked to shop successfully',
+                                        ),
+                                      ),
+                                    );
+                                    // refresh by rebuilding widget (future will re-run)
+                                    setState(() => _linkingLoading = false);
+                                  } catch (e) {
+                                    setState(() => _linkingLoading = false);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Failed to link: $e'),
+                                      ),
+                                    );
+                                  }
+                                },
+                        child:
+                            _linkingLoading
+                                ? const SizedBox(
+                                  height: 18,
+                                  width: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                                : const Text('Link to selected shop'),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -277,23 +297,27 @@ class _BarberDashboardState extends State<BarberDashboard> {
                         // fetch shops if not loaded
                         if (_shops.isEmpty) {
                           try {
-                            final s = await FirebaseFirestore.instance
-                                .collection('shop')
-                                .get();
-                            final list = s.docs
-                                .map(
-                                  (d) => {
-                                    'id': d.id,
-                                    'name': (d.data()['shopName'] ?? d.id)
-                                        .toString(),
-                                  },
-                                )
-                                .toList();
+                            final s =
+                                await FirebaseFirestore.instance
+                                    .collection('shop')
+                                    .get();
+                            final list =
+                                s.docs
+                                    .map(
+                                      (d) => {
+                                        'id': d.id,
+                                        'name':
+                                            (d.data()['shopName'] ?? d.id)
+                                                .toString(),
+                                      },
+                                    )
+                                    .toList();
                             if (mounted)
                               setState(
-                                () => _shops = List<Map<String, String>>.from(
-                                  list,
-                                ),
+                                () =>
+                                    _shops = List<Map<String, String>>.from(
+                                      list,
+                                    ),
                               );
                           } catch (e) {
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -356,8 +380,9 @@ class _BarberDashboardState extends State<BarberDashboard> {
                         children: [
                           // Avatar with subtle border (tappable to edit profile)
                           GestureDetector(
-                            onTap: () =>
-                                _showEditBarberDialog(doc.reference, data),
+                            onTap:
+                                () =>
+                                    _showEditBarberDialog(doc.reference, data),
                             child: Container(
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
@@ -369,20 +394,22 @@ class _BarberDashboardState extends State<BarberDashboard> {
                               child: CircleAvatar(
                                 radius: 42,
                                 backgroundColor: Colors.white24,
-                                backgroundImage: photo.isNotEmpty
-                                    ? NetworkImage(photo) as ImageProvider
-                                    : null,
-                                child: photo.isEmpty
-                                    ? Text(
-                                        barberName.isNotEmpty
-                                            ? barberName[0].toUpperCase()
-                                            : 'B',
-                                        style: const TextStyle(
-                                          fontSize: 28,
-                                          color: Colors.white,
-                                        ),
-                                      )
-                                    : null,
+                                backgroundImage:
+                                    photo.isNotEmpty
+                                        ? NetworkImage(photo) as ImageProvider
+                                        : null,
+                                child:
+                                    photo.isEmpty
+                                        ? Text(
+                                          barberName.isNotEmpty
+                                              ? barberName[0].toUpperCase()
+                                              : 'B',
+                                          style: const TextStyle(
+                                            fontSize: 28,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                        : null,
                               ),
                             ),
                           ),
@@ -405,12 +432,13 @@ class _BarberDashboardState extends State<BarberDashboard> {
                                 FutureBuilder<
                                   DocumentSnapshot<Map<String, dynamic>>?
                                 >(
-                                  future: shopId.isNotEmpty
-                                      ? FirebaseFirestore.instance
-                                            .collection('shop')
-                                            .doc(shopId)
-                                            .get()
-                                      : Future.value(null),
+                                  future:
+                                      shopId.isNotEmpty
+                                          ? FirebaseFirestore.instance
+                                              .collection('shop')
+                                              .doc(shopId)
+                                              .get()
+                                          : Future.value(null),
                                   builder: (ctx, s2) {
                                     final shopName =
                                         (s2.data?.data()?['shopName'] ?? '')
@@ -712,47 +740,50 @@ class _BarberDashboardState extends State<BarberDashboard> {
                       children: [
                         Expanded(
                           child: OutlinedButton(
-                            onPressed: loading
-                                ? null
-                                : () => Navigator.of(ctx).pop(false),
+                            onPressed:
+                                loading
+                                    ? null
+                                    : () => Navigator.of(ctx).pop(false),
                             child: const Text('Cancel'),
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: ElevatedButton(
-                            onPressed: loading
-                                ? null
-                                : () async {
-                                    final newName = nameCtrl.text.trim();
-                                    if (newName.isEmpty) return;
-                                    setState(() => loading = true);
-                                    try {
-                                      await docRef.update({
-                                        'name': newName,
-                                        'updatedAt':
-                                            FieldValue.serverTimestamp(),
-                                      });
-                                      Navigator.of(ctx).pop(true);
-                                    } catch (e) {
-                                      setState(() => loading = false);
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(content: Text('Failed: $e')),
-                                      );
-                                    }
-                                  },
-                            child: loading
-                                ? const SizedBox(
-                                    height: 16,
-                                    width: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Text('Save'),
+                            onPressed:
+                                loading
+                                    ? null
+                                    : () async {
+                                      final newName = nameCtrl.text.trim();
+                                      if (newName.isEmpty) return;
+                                      setState(() => loading = true);
+                                      try {
+                                        await docRef.update({
+                                          'name': newName,
+                                          'updatedAt':
+                                              FieldValue.serverTimestamp(),
+                                        });
+                                        Navigator.of(ctx).pop(true);
+                                      } catch (e) {
+                                        setState(() => loading = false);
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(content: Text('Failed: $e')),
+                                        );
+                                      }
+                                    },
+                            child:
+                                loading
+                                    ? const SizedBox(
+                                      height: 16,
+                                      width: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                    : const Text('Save'),
                           ),
                         ),
                       ],

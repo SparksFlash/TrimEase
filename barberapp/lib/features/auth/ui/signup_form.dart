@@ -36,15 +36,16 @@ class _SignupFormState extends State<SignupForm> {
   Future<void> _fetchShops() async {
     try {
       final snap = await FirebaseFirestore.instance.collection('shop').get();
-      final list = snap.docs
-          .map(
-            (d) => {
-              'id': d.id,
-              'name': (d.data()['shopName'] ?? d.id).toString(),
-            },
-          )
-          .where((m) => (m['name'] ?? '').isNotEmpty)
-          .toList();
+      final list =
+          snap.docs
+              .map(
+                (d) => {
+                  'id': d.id,
+                  'name': (d.data()['shopName'] ?? d.id).toString(),
+                },
+              )
+              .where((m) => (m['name'] ?? '').isNotEmpty)
+              .toList();
       if (mounted) setState(() => _shops = list);
     } catch (e) {
       debugPrint('Failed to load shops: $e');
@@ -78,6 +79,19 @@ class _SignupFormState extends State<SignupForm> {
   @override
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthProvider>(context);
+    // Shared styles for better visibility on dark backgrounds
+    final fieldTextStyle = TextStyle(
+      color: Colors.white,
+      fontSize: 16,
+      fontWeight: FontWeight.w600,
+    );
+    final labelStyle = TextStyle(
+      color: Colors.white70,
+      fontSize: 14,
+      fontWeight: FontWeight.w600,
+    );
+    final hintStyle = TextStyle(color: Colors.white54, fontSize: 14);
+    final iconColor = Colors.white70;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
       child: Form(
@@ -95,13 +109,23 @@ class _SignupFormState extends State<SignupForm> {
               child: DropdownButtonFormField<String>(
                 value: _category,
                 dropdownColor: Colors.black87,
-                items: const [
-                  DropdownMenuItem(value: 'owner', child: Text('Owner')),
-                  DropdownMenuItem(value: 'barber', child: Text('Barber')),
-                  DropdownMenuItem(value: 'customer', child: Text('Customer')),
+                style: fieldTextStyle,
+                items: [
+                  DropdownMenuItem(
+                    value: 'owner',
+                    child: Text('Owner', style: fieldTextStyle),
+                  ),
+                  DropdownMenuItem(
+                    value: 'barber',
+                    child: Text('Barber', style: fieldTextStyle),
+                  ),
+                  DropdownMenuItem(
+                    value: 'customer',
+                    child: Text('Customer', style: fieldTextStyle),
+                  ),
                 ],
                 onChanged: (v) => setState(() => _category = v ?? 'customer'),
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   border: InputBorder.none,
                   labelText: null,
                 ),
@@ -111,54 +135,72 @@ class _SignupFormState extends State<SignupForm> {
 
             TextFormField(
               controller: _nameController,
-              decoration: const InputDecoration(
+              style: fieldTextStyle,
+              decoration: InputDecoration(
                 labelText: 'Full name',
-                prefixIcon: Icon(Icons.person),
+                labelStyle: labelStyle,
+                hintStyle: hintStyle,
+                prefixIcon: Icon(Icons.person, color: iconColor),
               ),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Enter name' : null,
+              validator:
+                  (v) => (v == null || v.trim().isEmpty) ? 'Enter name' : null,
             ),
             const SizedBox(height: 12),
 
             TextFormField(
               controller: _emailController,
-              decoration: const InputDecoration(
+              style: fieldTextStyle,
+              decoration: InputDecoration(
                 labelText: 'Email',
-                prefixIcon: Icon(Icons.email),
+                labelStyle: labelStyle,
+                hintStyle: hintStyle,
+                prefixIcon: Icon(Icons.email, color: iconColor),
               ),
-              validator: (v) =>
-                  (v == null || !v.contains('@')) ? 'Enter valid email' : null,
+              validator:
+                  (v) =>
+                      (v == null || !v.contains('@'))
+                          ? 'Enter valid email'
+                          : null,
             ),
             const SizedBox(height: 12),
 
             TextFormField(
               controller: _passwordController,
               obscureText: _obscure,
+              style: fieldTextStyle,
               decoration: InputDecoration(
                 labelText: 'Password',
-                prefixIcon: const Icon(Icons.lock),
+                labelStyle: labelStyle,
+                hintStyle: hintStyle,
+                prefixIcon: Icon(Icons.lock, color: iconColor),
                 suffixIcon: IconButton(
                   icon: Icon(
                     _obscure ? Icons.visibility : Icons.visibility_off,
+                    color: iconColor,
                   ),
                   onPressed: () => setState(() => _obscure = !_obscure),
                 ),
               ),
-              validator: (v) =>
-                  (v == null || v.length < 6) ? 'Minimum 6 chars' : null,
+              validator:
+                  (v) => (v == null || v.length < 6) ? 'Minimum 6 chars' : null,
             ),
             const SizedBox(height: 12),
 
             TextFormField(
               controller: _confirmController,
               obscureText: _obscure,
-              decoration: const InputDecoration(
+              style: fieldTextStyle,
+              decoration: InputDecoration(
                 labelText: 'Confirm password',
-                prefixIcon: Icon(Icons.lock_outline),
+                labelStyle: labelStyle,
+                hintStyle: hintStyle,
+                prefixIcon: Icon(Icons.lock_outline, color: iconColor),
               ),
-              validator: (v) => (v != _passwordController.text)
-                  ? 'Passwords do not match'
-                  : null,
+              validator:
+                  (v) =>
+                      (v != _passwordController.text)
+                          ? 'Passwords do not match'
+                          : null,
             ),
             const SizedBox(height: 12),
 
@@ -166,12 +208,18 @@ class _SignupFormState extends State<SignupForm> {
             if (_category == 'owner') ...[
               TextFormField(
                 controller: _shopNameController,
-                decoration: const InputDecoration(
+                style: fieldTextStyle,
+                decoration: InputDecoration(
                   labelText: 'Shop name',
-                  prefixIcon: Icon(Icons.store),
+                  labelStyle: labelStyle,
+                  hintStyle: hintStyle,
+                  prefixIcon: Icon(Icons.store, color: iconColor),
                 ),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Enter shop name' : null,
+                validator:
+                    (v) =>
+                        (v == null || v.trim().isEmpty)
+                            ? 'Enter shop name'
+                            : null,
               ),
               const SizedBox(height: 12),
             ],
@@ -193,33 +241,46 @@ class _SignupFormState extends State<SignupForm> {
                   _shopPickerController.text = selection['name']!;
                   _selectedShopId = selection['id'];
                 },
-                fieldViewBuilder:
-                    (context, controller, focusNode, onFieldSubmitted) {
-                      controller.text = _shopPickerController.text;
-                      return TextFormField(
-                        controller: controller,
-                        focusNode: focusNode,
-                        decoration: const InputDecoration(
-                          labelText: 'Select shop',
-                          prefixIcon: Icon(Icons.storefront),
-                        ),
-                        validator: (v) => (v == null || v.trim().isEmpty)
-                            ? 'Select shop'
-                            : null,
-                      );
-                    },
+                fieldViewBuilder: (
+                  context,
+                  controller,
+                  focusNode,
+                  onFieldSubmitted,
+                ) {
+                  controller.text = _shopPickerController.text;
+                  return TextFormField(
+                    controller: controller,
+                    focusNode: focusNode,
+                    style: fieldTextStyle,
+                    decoration: InputDecoration(
+                      labelText: 'Select shop',
+                      labelStyle: labelStyle,
+                      hintStyle: hintStyle,
+                      prefixIcon: Icon(Icons.storefront, color: iconColor),
+                    ),
+                    validator:
+                        (v) =>
+                            (v == null || v.trim().isEmpty)
+                                ? 'Select shop'
+                                : null,
+                  );
+                },
                 optionsViewBuilder: (context, onSelected, options) {
                   return Material(
                     elevation: 4,
                     child: ListView(
                       padding: EdgeInsets.zero,
                       shrinkWrap: true,
-                      children: options.map((opt) {
-                        return ListTile(
-                          title: Text(opt['name'] ?? opt['id']!),
-                          onTap: () => onSelected(opt),
-                        );
-                      }).toList(),
+                      children:
+                          options.map((opt) {
+                            return ListTile(
+                              title: Text(
+                                opt['name'] ?? opt['id']!,
+                                style: fieldTextStyle.copyWith(fontSize: 15),
+                              ),
+                              onTap: () => onSelected(opt),
+                            );
+                          }).toList(),
                     ),
                   );
                 },
@@ -231,72 +292,86 @@ class _SignupFormState extends State<SignupForm> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: auth.loading
-                    ? null
-                    : () async {
-                        if (!_formKey.currentState!.validate()) return;
+                onPressed:
+                    auth.loading
+                        ? null
+                        : () async {
+                          if (!_formKey.currentState!.validate()) return;
 
-                        final email = _emailController.text.trim();
-                        final password = _passwordController.text.trim();
+                          final email = _emailController.text.trim();
+                          final password = _passwordController.text.trim();
 
-                        String? err;
-                        if (_category == 'owner') {
-                          final shopName = _shopNameController.text.trim();
-                          err = await auth.signUp(
-                            email: email,
-                            password: password,
-                            category: 'owner',
-                            shopName: shopName,
-                          );
-                        } else if (_category == 'customer') {
-                          err = await auth.signUp(
-                            email: email,
-                            password: password,
-                            category: 'customer',
-                          );
-                        } else {
-                          // barber
-                          if (_selectedShopId == null) {
+                          String? err;
+                          if (_category == 'owner') {
+                            final shopName = _shopNameController.text.trim();
+                            err = await auth.signUp(
+                              email: email,
+                              password: password,
+                              category: 'owner',
+                              shopName: shopName,
+                            );
+                          } else if (_category == 'customer') {
+                            err = await auth.signUp(
+                              email: email,
+                              password: password,
+                              category: 'customer',
+                            );
+                          } else {
+                            // barber
+                            if (_selectedShopId == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Please select a shop'),
+                                ),
+                              );
+                              return;
+                            }
+                            err = await auth.signUp(
+                              email: email,
+                              password: password,
+                              category: 'barber',
+                              selectedShopId: _selectedShopId,
+                            );
+                          }
+
+                          if (err == null) {
+                            // success (should not happen because provider signs out and returns verification status)
+                            _clearForm();
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                content: Text('Please select a shop'),
+                                content: Text('Sign up successful'),
                               ),
                             );
-                            return;
+                          } else if (err == 'verification_sent') {
+                            _clearForm();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Verification email sent — please check your inbox and verify before logging in.',
+                                ),
+                                duration: Duration(seconds: 6),
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(
+                              context,
+                            ).showSnackBar(SnackBar(content: Text(err)));
                           }
-                          err = await auth.signUp(
-                            email: email,
-                            password: password,
-                            category: 'barber',
-                            selectedShopId: _selectedShopId,
-                          );
-                        }
-
-                        if (err == null) {
-                          // success
-                          _clearForm();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Sign up successful')),
-                          );
-                        } else {
-                          ScaffoldMessenger.of(
-                            context,
-                          ).showSnackBar(SnackBar(content: Text(err)));
-                        }
-                      },
+                        },
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
-                child: auth.loading
-                    ? const SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Text('Sign Up'),
+                child:
+                    auth.loading
+                        ? const SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                        : const Text('Sign Up'),
               ),
             ),
           ],

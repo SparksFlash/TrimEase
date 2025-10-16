@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
+import '../../utils/firebase_helper.dart';
 import 'package:flutter/material.dart';
 import '../../payment/checkout.dart';
 
@@ -12,7 +12,7 @@ class MyBookingsPage extends StatefulWidget {
 
 class _MyBookingsPageState extends State<MyBookingsPage> {
   final _fire = FirebaseFirestore.instance;
-  final _uid = fb_auth.FirebaseAuth.instance.currentUser?.uid ?? '';
+  final _uid = FirebaseHelper.currentUid();
   final Map<String, bool> _loading = {};
 
   Future<void> _confirmAndPayFromMirror(QueryDocumentSnapshot doc) async {
@@ -21,9 +21,10 @@ class _MyBookingsPageState extends State<MyBookingsPage> {
     final barberId = (data['barberId'] ?? '').toString();
     final serviceTitle = (data['serviceTitle'] ?? 'Service').toString();
     final scheduledAt = (data['scheduledAt'] as Timestamp?)?.toDate();
-    final amount = (data['price'] is num)
-        ? (data['price'] as num).toDouble()
-        : double.tryParse((data['price'] ?? '').toString()) ?? 0.0;
+    final amount =
+        (data['price'] is num)
+            ? (data['price'] as num).toDouble()
+            : double.tryParse((data['price'] ?? '').toString()) ?? 0.0;
 
     if (shopId.isEmpty || barberId.isEmpty || scheduledAt == null) {
       if (mounted)
@@ -39,13 +40,18 @@ class _MyBookingsPageState extends State<MyBookingsPage> {
     final paid = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => PaymentCheckout(
-          serviceName: serviceTitle,
-          date: scheduledAt,
-          time: scheduledAt.toLocal().toString().split(' ')[1].substring(0, 5),
-          amount: amount > 0 ? amount : 500.0,
-          description: desc,
-        ),
+        builder:
+            (_) => PaymentCheckout(
+              serviceName: serviceTitle,
+              date: scheduledAt,
+              time: scheduledAt
+                  .toLocal()
+                  .toString()
+                  .split(' ')[1]
+                  .substring(0, 5),
+              amount: amount > 0 ? amount : 500.0,
+              description: desc,
+            ),
       ),
     );
 
@@ -88,25 +94,27 @@ class _MyBookingsPageState extends State<MyBookingsPage> {
         // conflict check with index fallback
         bool conflictFound = false;
         try {
-          final conflicts = await _fire
-              .collection('shop')
-              .doc(shopId)
-              .collection('bookings')
-              .where('barberId', isEqualTo: barberId)
-              .where('status', isEqualTo: 'confirmed')
-              .where('scheduledAt', isGreaterThanOrEqualTo: lower)
-              .where('scheduledAt', isLessThan: upper)
-              .get();
+          final conflicts =
+              await _fire
+                  .collection('shop')
+                  .doc(shopId)
+                  .collection('bookings')
+                  .where('barberId', isEqualTo: barberId)
+                  .where('status', isEqualTo: 'confirmed')
+                  .where('scheduledAt', isGreaterThanOrEqualTo: lower)
+                  .where('scheduledAt', isLessThan: upper)
+                  .get();
           if (conflicts.docs.isNotEmpty) conflictFound = true;
         } catch (e) {
           debugPrint('Range query failed in confirm (fallback): $e');
-          final alt = await _fire
-              .collection('shop')
-              .doc(shopId)
-              .collection('bookings')
-              .where('barberId', isEqualTo: barberId)
-              .where('status', isEqualTo: 'confirmed')
-              .get();
+          final alt =
+              await _fire
+                  .collection('shop')
+                  .doc(shopId)
+                  .collection('bookings')
+                  .where('barberId', isEqualTo: barberId)
+                  .where('status', isEqualTo: 'confirmed')
+                  .get();
           for (final d in alt.docs) {
             final ts = d.data()['scheduledAt'];
             if (ts is Timestamp) {
@@ -147,11 +155,8 @@ class _MyBookingsPageState extends State<MyBookingsPage> {
           'booking_confirmed': true,
         });
 
-        final payRef = _fire
-            .collection('shop')
-            .doc(shopId)
-            .collection('payments')
-            .doc();
+        final payRef =
+            _fire.collection('shop').doc(shopId).collection('payments').doc();
         tx.set(payRef, {
           'bookingId': doc.id,
           'userId': _uid,
@@ -190,12 +195,7 @@ class _MyBookingsPageState extends State<MyBookingsPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('My booking')),
       body: StreamBuilder<QuerySnapshot>(
-        stream: _fire
-            .collection('users')
-            .doc(_uid)
-            .collection('bookings')
-            .orderBy('scheduledAt', descending: true)
-            .snapshots(),
+        stream: FirebaseHelper.userBookingsStream(_uid),
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting)
             return const Center(child: CircularProgressIndicator());
@@ -219,9 +219,11 @@ class _MyBookingsPageState extends State<MyBookingsPage> {
                 final scheduled = (data['scheduledAt'] as Timestamp?)?.toDate();
                 final status = (data['status'] ?? '').toString();
                 final barber = (data['barberName'] ?? '').toString();
-                final price = (data['price'] is num)
-                    ? (data['price'] as num).toDouble()
-                    : double.tryParse((data['price'] ?? '').toString()) ?? 0.0;
+                final price =
+                    (data['price'] is num)
+                        ? (data['price'] as num).toDouble()
+                        : double.tryParse((data['price'] ?? '').toString()) ??
+                            0.0;
 
                 final isPending =
                     status == 'provisional' ||
@@ -258,29 +260,28 @@ class _MyBookingsPageState extends State<MyBookingsPage> {
                             Text('৳${price.toStringAsFixed(2)}'),
                             isPending
                                 ? (_loading[d.id] == true
-                                      ? const SizedBox(
-                                          width: 24,
-                                          height: 24,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                          ),
-                                        )
-                                      : ElevatedButton(
-                                          onPressed: () =>
-                                              _confirmAndPayFromMirror(d),
-                                          child: const Text('Confirm & Pay'),
-                                        ))
-                                : Chip(
-                                    label: Text(
-                                      status.isNotEmpty ? status : 'unknown',
-                                      style: const TextStyle(
-                                        color: Colors.white,
+                                    ? const SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
                                       ),
-                                    ),
-                                    backgroundColor: status == 'confirmed'
-                                        ? Colors.green
-                                        : Colors.orange,
+                                    )
+                                    : ElevatedButton(
+                                      onPressed:
+                                          () => _confirmAndPayFromMirror(d),
+                                      child: const Text('Confirm & Pay'),
+                                    ))
+                                : Chip(
+                                  label: Text(
+                                    status.isNotEmpty ? status : 'unknown',
+                                    style: const TextStyle(color: Colors.white),
                                   ),
+                                  backgroundColor:
+                                      status == 'confirmed'
+                                          ? Colors.green
+                                          : Colors.orange,
+                                ),
                           ],
                         ),
                       ],

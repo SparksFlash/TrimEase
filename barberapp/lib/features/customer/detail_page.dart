@@ -1,10 +1,9 @@
-
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../payment/checkout.dart';
-import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
+import '../../utils/firebase_helper.dart';
 
 /// DetailPage shows booking UI for a specific service at a specific barber/shop.
 /// It accepts shopId, barberId, serviceId. If serviceName is null, the page
@@ -63,10 +62,15 @@ class _DetailPageState extends State<DetailPage> {
   @override
   void initState() {
     super.initState();
-    availableDates = List.generate(6, (i) => DateTime.now().add(Duration(days: i)));
+    availableDates = List.generate(
+      6,
+      (i) => DateTime.now().add(Duration(days: i)),
+    );
     _loadBookedSlots();
     _loadServiceIfNeeded();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadRemoteBlockedForDay(availableDates[selectedDayIndex]));
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _loadRemoteBlockedForDay(availableDates[selectedDayIndex]),
+    );
   }
 
   String _weekdayShort(DateTime d) {
@@ -80,18 +84,20 @@ class _DetailPageState extends State<DetailPage> {
       return;
     }
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('shop')
-          .doc(widget.shopId)
-          .collection('services')
-          .doc(widget.serviceId)
-          .get();
+      final doc =
+          await FirebaseFirestore.instance
+              .collection('shop')
+              .doc(widget.shopId)
+              .collection('services')
+              .doc(widget.serviceId)
+              .get();
       final data = doc.data();
       setState(() {
         _serviceTitle = (data?['title'] ?? '').toString();
-        _servicePrice = (data?['price'] is num)
-            ? (data!['price'] as num).toDouble()
-            : double.tryParse((data?['price'] ?? '0').toString()) ?? 0.0;
+        _servicePrice =
+            (data?['price'] is num)
+                ? (data!['price'] as num).toDouble()
+                : double.tryParse((data?['price'] ?? '0').toString()) ?? 0.0;
       });
     } catch (_) {}
   }
@@ -105,7 +111,8 @@ class _DetailPageState extends State<DetailPage> {
       return;
     }
     try {
-      final Map<String, dynamic> decoded = jsonDecode(raw) as Map<String, dynamic>;
+      final Map<String, dynamic> decoded =
+          jsonDecode(raw) as Map<String, dynamic>;
       final now = DateTime.now().millisecondsSinceEpoch;
       final cutoff24h = now - Duration(hours: 24).inMilliseconds;
       _bookedSlots = {};
@@ -127,7 +134,8 @@ class _DetailPageState extends State<DetailPage> {
 
   // build a stable slot key for selected date/time (includes barber and service)
   String _slotKeyForDate(DateTime dt, String time) {
-    final dateStr = '${dt.year.toString().padLeft(4, '0')}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+    final dateStr =
+        '${dt.year.toString().padLeft(4, '0')}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
     return '${widget.barberId}|${widget.serviceId}|$dateStr|$time';
   }
 
@@ -160,18 +168,21 @@ class _DetailPageState extends State<DetailPage> {
       _remoteBlockedTimes.clear();
       final dayStart = DateTime(day.year, day.month, day.day);
       final dayEnd = dayStart.add(const Duration(days: 1));
-      final lower = Timestamp.fromDate(dayStart.subtract(const Duration(minutes: 59)));
+      final lower = Timestamp.fromDate(
+        dayStart.subtract(const Duration(minutes: 59)),
+      );
       final upper = Timestamp.fromDate(dayEnd.add(const Duration(minutes: 60)));
 
-      final snap = await FirebaseFirestore.instance
-          .collection('shop')
-          .doc(widget.shopId)
-          .collection('bookings')
-          .where('barberId', isEqualTo: widget.barberId)
-          .where('status', whereIn: ['confirmed', 'provisional'])
-          .where('scheduledAt', isGreaterThanOrEqualTo: lower)
-          .where('scheduledAt', isLessThan: upper)
-          .get();
+      final snap =
+          await FirebaseFirestore.instance
+              .collection('shop')
+              .doc(widget.shopId)
+              .collection('bookings')
+              .where('barberId', isEqualTo: widget.barberId)
+              .where('status', whereIn: ['confirmed', 'provisional'])
+              .where('scheduledAt', isGreaterThanOrEqualTo: lower)
+              .where('scheduledAt', isLessThan: upper)
+              .get();
 
       for (final d in snap.docs) {
         final data = d.data();
@@ -180,7 +191,13 @@ class _DetailPageState extends State<DetailPage> {
         for (final t in times) {
           final hm = _timeStringToHourMinute(t);
           if (hm == null) continue;
-          final candidate = DateTime(ts.year, ts.month, ts.day, hm.item1, hm.item2);
+          final candidate = DateTime(
+            ts.year,
+            ts.month,
+            ts.day,
+            hm.item1,
+            hm.item2,
+          );
           final diff = candidate.difference(ts).inMinutes;
           if (diff >= -59 && diff < 60) _remoteBlockedTimes.add(t);
         }
@@ -201,7 +218,13 @@ class _DetailPageState extends State<DetailPage> {
       for (final t in times) {
         final hh = _timeStringToHourMinute(t);
         if (hh == null) continue;
-        final candidate = DateTime(dt.year, dt.month, dt.day, hh.item1, hh.item2);
+        final candidate = DateTime(
+          dt.year,
+          dt.month,
+          dt.day,
+          hh.item1,
+          hh.item2,
+        );
         final diff = candidate.difference(chosen).inMinutes;
         if (diff >= -59 && diff < 60) {
           final k = _slotKeyForDate(dt, t);
@@ -218,56 +241,82 @@ class _DetailPageState extends State<DetailPage> {
   Future<void> _onBookNow() async {
     // validate UI selection
     if (selectedTimeIndex == -1) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select a time slot!')));
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please select a time slot!')),
+        );
       return;
     }
 
     final dt = availableDates[selectedDayIndex];
     final time = times[selectedTimeIndex];
     if (_isSlotBookedForDate(dt, time) || _remoteBlockedTimes.contains(time)) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This slot is already booked')));
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('This slot is already booked')),
+        );
       return;
     }
 
     final chosenHM = _timeStringToHourMinute(time);
     if (chosenHM == null) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid time')));
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Invalid time')));
       return;
     }
 
-    final chosenStart = DateTime(dt.year, dt.month, dt.day, chosenHM.item1, chosenHM.item2);
-    final lower = Timestamp.fromDate(chosenStart.subtract(const Duration(minutes: 59)));
-    final upper = Timestamp.fromDate(chosenStart.add(const Duration(minutes: 60)));
+    final chosenStart = DateTime(
+      dt.year,
+      dt.month,
+      dt.day,
+      chosenHM.item1,
+      chosenHM.item2,
+    );
+    final lower = Timestamp.fromDate(
+      chosenStart.subtract(const Duration(minutes: 59)),
+    );
+    final upper = Timestamp.fromDate(
+      chosenStart.add(const Duration(minutes: 60)),
+    );
 
     // check for existing provisional/confirmed bookings in Firestore
-    final conflictQuery = await FirebaseFirestore.instance
-        .collection('shop')
-        .doc(widget.shopId)
-        .collection('bookings')
-        .where('barberId', isEqualTo: widget.barberId)
-        .where('status', whereIn: ['confirmed', 'provisional'])
-        .where('scheduledAt', isGreaterThanOrEqualTo: lower)
-        .where('scheduledAt', isLessThan: upper)
-        .get();
+    final conflictQuery =
+        await FirebaseFirestore.instance
+            .collection('shop')
+            .doc(widget.shopId)
+            .collection('bookings')
+            .where('barberId', isEqualTo: widget.barberId)
+            .where('status', whereIn: ['confirmed', 'provisional'])
+            .where('scheduledAt', isGreaterThanOrEqualTo: lower)
+            .where('scheduledAt', isLessThan: upper)
+            .get();
 
     if (conflictQuery.docs.isNotEmpty) {
       await _loadRemoteBlockedForDay(dt);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selected time conflicts with existing booking')));
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Selected time conflicts with existing booking'),
+          ),
+        );
       return;
     }
 
     // create provisional booking (blocks the slot while paying)
-    final provisionalRef = FirebaseFirestore.instance
-        .collection('shop')
-        .doc(widget.shopId)
-        .collection('bookings')
-        .doc();
+    final provisionalRef =
+        FirebaseFirestore.instance
+            .collection('shop')
+            .doc(widget.shopId)
+            .collection('bookings')
+            .doc();
 
     final provisionalData = {
       'barberId': widget.barberId,
       'serviceId': widget.serviceId,
       'serviceTitle': _serviceTitle,
-      'customerId': fb_auth.FirebaseAuth.instance.currentUser?.uid ?? '',
+      'customerId': FirebaseHelper.currentUid(),
       'scheduledAt': Timestamp.fromDate(chosenStart),
       'createdAt': FieldValue.serverTimestamp(),
       'status': 'provisional',
@@ -278,41 +327,45 @@ class _DetailPageState extends State<DetailPage> {
     await _loadRemoteBlockedForDay(dt);
 
     final amount = _servicePrice > 0 ? _servicePrice : 500.0; // fallback
-    final description = '$_serviceTitle on ${dt.toLocal().toString().split(' ')[0]} at $time';
+    final description =
+        '$_serviceTitle on ${dt.toLocal().toString().split(' ')[0]} at $time';
 
     final result = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => PaymentCheckout(
-          serviceName: _serviceTitle,
-          date: dt,
-          time: time,
-          amount: amount,
-          description: description,
-        ),
+        builder:
+            (_) => PaymentCheckout(
+              serviceName: _serviceTitle,
+              date: dt,
+              time: time,
+              amount: amount,
+              description: description,
+            ),
       ),
     );
 
     if (result == true) {
       // Payment succeeded — confirm provisional booking in a transaction
       try {
-        final uid = fb_auth.FirebaseAuth.instance.currentUser?.uid ?? '';
+        final uid = FirebaseHelper.currentUid();
         final provRef = provisionalRef;
 
         await FirebaseFirestore.instance.runTransaction((tx) async {
           final provSnap = await tx.get(provRef);
-          if (!provSnap.exists) throw Exception('Provisional booking not found');
+          if (!provSnap.exists)
+            throw Exception('Provisional booking not found');
 
           // ensure no confirmed booking exists in the window
-          final conflicts = await FirebaseFirestore.instance
-              .collection('shop')
-              .doc(widget.shopId)
-              .collection('bookings')
-              .where('barberId', isEqualTo: widget.barberId)
-              .where('status', isEqualTo: 'confirmed')
-              .where('scheduledAt', isGreaterThanOrEqualTo: lower)
-              .where('scheduledAt', isLessThan: upper)
-              .get();
+          final conflicts =
+              await FirebaseFirestore.instance
+                  .collection('shop')
+                  .doc(widget.shopId)
+                  .collection('bookings')
+                  .where('barberId', isEqualTo: widget.barberId)
+                  .where('status', isEqualTo: 'confirmed')
+                  .where('scheduledAt', isGreaterThanOrEqualTo: lower)
+                  .where('scheduledAt', isLessThan: upper)
+                  .get();
 
           if (conflicts.docs.isNotEmpty) {
             tx.delete(provRef);
@@ -357,13 +410,19 @@ class _DetailPageState extends State<DetailPage> {
 
         await _markSlotBooked(dt, time);
         await _loadRemoteBlockedForDay(dt);
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Booking confirmed.')));
+        if (mounted)
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Booking confirmed.')));
       } catch (e) {
         try {
           await provisionalRef.delete();
         } catch (_) {}
         await _loadRemoteBlockedForDay(dt);
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to confirm booking: $e')));
+        if (mounted)
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to confirm booking: $e')),
+          );
       }
     } else {
       // payment cancelled or failed
@@ -371,7 +430,10 @@ class _DetailPageState extends State<DetailPage> {
         await provisionalRef.delete();
       } catch (_) {}
       await _loadRemoteBlockedForDay(dt);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Payment cancelled or failed.')));
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Payment cancelled or failed.')),
+        );
     }
   }
 
@@ -412,19 +474,29 @@ class _DetailPageState extends State<DetailPage> {
                       height: 100,
                       width: 100,
                       fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => Container(
-                        height: 100,
-                        width: 100,
-                        decoration: BoxDecoration(
-                          color: Colors.brown.shade300,
-                          borderRadius: BorderRadius.circular(60),
-                        ),
-                        child: const Icon(
-                          Icons.person,
-                          color: Colors.white,
-                          size: 48,
-                        ),
-                      ),
+                      errorBuilder: (context, error, stackTrace) {
+                        // Attempt to load a known-good fallback image from assets
+                        return Image.asset(
+                          'images/barber.png',
+                          height: 100,
+                          width: 100,
+                          fit: BoxFit.cover,
+                          errorBuilder:
+                              (context2, error2, stackTrace2) => Container(
+                                height: 100,
+                                width: 100,
+                                decoration: BoxDecoration(
+                                  color: Colors.brown.shade300,
+                                  borderRadius: BorderRadius.circular(60),
+                                ),
+                                child: const Icon(
+                                  Icons.person,
+                                  color: Colors.white,
+                                  size: 48,
+                                ),
+                              ),
+                        );
+                      },
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -442,7 +514,10 @@ class _DetailPageState extends State<DetailPage> {
                       const SizedBox(height: 5),
                       Text(
                         widget.barberId,
-                        style: const TextStyle(color: Colors.white70, fontSize: 16),
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 16,
+                        ),
                       ),
                     ],
                   ),
@@ -467,7 +542,10 @@ class _DetailPageState extends State<DetailPage> {
             SizedBox(
               height: 86,
               child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12.0,
+                  vertical: 8.0,
+                ),
                 scrollDirection: Axis.horizontal,
                 itemCount: availableDates.length,
                 itemBuilder: (context, index) {
@@ -485,7 +563,10 @@ class _DetailPageState extends State<DetailPage> {
                       margin: const EdgeInsets.symmetric(horizontal: 8.0),
                       padding: const EdgeInsets.all(12.0),
                       decoration: BoxDecoration(
-                        color: isSelected ? const Color(0xfffdece7) : Colors.transparent,
+                        color:
+                            isSelected
+                                ? const Color(0xfffdece7)
+                                : Colors.transparent,
                         borderRadius: BorderRadius.circular(10.0),
                         border: Border.all(color: Colors.white),
                       ),
@@ -543,37 +624,55 @@ class _DetailPageState extends State<DetailPage> {
                     Expanded(
                       child: GridView.builder(
                         padding: const EdgeInsets.only(bottom: 8),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          mainAxisSpacing: 10,
-                          crossAxisSpacing: 10,
-                          childAspectRatio: 2.6,
-                        ),
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 3,
+                              mainAxisSpacing: 10,
+                              crossAxisSpacing: 10,
+                              childAspectRatio: 2.6,
+                            ),
                         itemCount: times.length,
                         itemBuilder: (context, index) {
                           final time = times[index];
                           final dt = availableDates[selectedDayIndex];
-                          final disabled = _isSlotBookedForDate(dt, time) || _remoteBlockedTimes.contains(time);
-                          final isSelected = selectedTimeIndex == index && !disabled;
+                          final disabled =
+                              _isSlotBookedForDate(dt, time) ||
+                              _remoteBlockedTimes.contains(time);
+                          final isSelected =
+                              selectedTimeIndex == index && !disabled;
                           return GestureDetector(
-                            onTap: disabled ? null : () => setState(() => selectedTimeIndex = index),
+                            onTap:
+                                disabled
+                                    ? null
+                                    : () => setState(
+                                      () => selectedTimeIndex = index,
+                                    ),
                             child: Container(
                               alignment: Alignment.center,
                               decoration: BoxDecoration(
-                                color: disabled
-                                    ? Colors.grey.shade300
-                                    : (isSelected ? const Color(0xFF2E3B2A) : Colors.white),
+                                color:
+                                    disabled
+                                        ? Colors.grey.shade300
+                                        : (isSelected
+                                            ? const Color(0xFF2E3B2A)
+                                            : Colors.white),
                                 borderRadius: BorderRadius.circular(8.0),
                                 border: Border.all(
-                                  color: isSelected ? Colors.white : Colors.black26,
+                                  color:
+                                      isSelected
+                                          ? Colors.white
+                                          : Colors.black26,
                                 ),
                               ),
                               child: Text(
                                 time,
                                 style: TextStyle(
-                                  color: disabled
-                                      ? Colors.grey.shade600
-                                      : (isSelected ? Colors.white : Colors.black),
+                                  color:
+                                      disabled
+                                          ? Colors.grey.shade600
+                                          : (isSelected
+                                              ? Colors.white
+                                              : Colors.black),
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
