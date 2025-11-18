@@ -3,10 +3,13 @@ import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
 import 'package:firebase_core/firebase_core.dart' as firebase_core;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../auth/provider/auth_provider.dart';
 import 'account_management.dart';
 import 'barber_management.dart';
 import 'service_management.dart';
+import 'owner_profile.dart';
+import 'owner_wallet.dart';
 
 class OwnerDashboard extends StatefulWidget {
   const OwnerDashboard({Key? key}) : super(key: key);
@@ -18,6 +21,8 @@ class OwnerDashboard extends StatefulWidget {
 class _OwnerDashboardState extends State<OwnerDashboard> {
   late final String _uid;
   // Service inputs removed from inline dashboard; managed in ServiceManagement page
+  int _selectedIndex = 0;
+  static const _navPrefKey = 'owner_nav_index';
 
   @override
   void initState() {
@@ -34,12 +39,28 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     } catch (_) {
       _uid = '';
     }
+    _loadNavIndex();
   }
 
   @override
   void dispose() {
     // nothing to dispose here related to services
     super.dispose();
+  }
+
+  Future<void> _loadNavIndex() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final idx = prefs.getInt(_navPrefKey) ?? 0;
+      if (mounted) setState(() => _selectedIndex = idx);
+    } catch (_) {}
+  }
+
+  Future<void> _saveNavIndex(int idx) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_navPrefKey, idx);
+    } catch (_) {}
   }
 
   @override
@@ -66,281 +87,320 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
           ),
         ],
       ),
-      body: StreamBuilder<DocumentSnapshot>(
-        stream:
-            FirebaseFirestore.instance.collection('shop').doc(_uid).snapshots(),
-        builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (!snap.hasData || !snap.data!.exists) {
-            return const Center(child: Text('Shop data not found'));
-          }
+      body:
+          _selectedIndex == 0
+              ? StreamBuilder<DocumentSnapshot>(
+                stream:
+                    FirebaseFirestore.instance
+                        .collection('shop')
+                        .doc(_uid)
+                        .snapshots(),
+                builder: (context, snap) {
+                  if (snap.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (!snap.hasData || !snap.data!.exists) {
+                    return const Center(child: Text('Shop data not found'));
+                  }
 
-          final data = snap.data!.data() as Map<String, dynamic>;
-          final shopName = (data['shopName'] ?? 'My Shop').toString();
-          final ownerName = (data['ownerName'] ?? '').toString();
-          final contact = (data['contact'] ?? '').toString();
-          final address = (data['address'] ?? '').toString();
+                  final data = snap.data!.data() as Map<String, dynamic>;
+                  final shopName = (data['shopName'] ?? 'My Shop').toString();
+                  final ownerName = (data['ownerName'] ?? '').toString();
+                  final contact = (data['contact'] ?? '').toString();
+                  final address = (data['address'] ?? '').toString();
 
-          return SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Header
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 24,
-                    horizontal: 20,
-                  ),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Colors.green.shade700, Colors.green.shade400],
-                    ),
-                    borderRadius: const BorderRadius.only(
-                      bottomLeft: Radius.circular(24),
-                      bottomRight: Radius.circular(24),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 36,
-                        backgroundColor: Colors.white24,
-                        child: Text(
-                          shopName.isNotEmpty ? shopName[0].toUpperCase() : 'S',
-                          style: const TextStyle(
-                            fontSize: 28,
-                            color: Colors.white,
+                  return SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Header
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 24,
+                            horizontal: 20,
+                          ),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                Colors.green.shade700,
+                                Colors.green.shade400,
+                              ],
+                            ),
+                            borderRadius: const BorderRadius.only(
+                              bottomLeft: Radius.circular(24),
+                              bottomRight: Radius.circular(24),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 36,
+                                backgroundColor: Colors.white24,
+                                child: Text(
+                                  shopName.isNotEmpty
+                                      ? shopName[0].toUpperCase()
+                                      : 'S',
+                                  style: const TextStyle(
+                                    fontSize: 28,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      shopName,
+                                      style: const TextStyle(
+                                        fontSize: 20,
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Row(
+                                      children: [
+                                        if (ownerName.isNotEmpty)
+                                          Text(
+                                            ownerName,
+                                            style: const TextStyle(
+                                              color: Colors.white70,
+                                            ),
+                                          ),
+                                        const Spacer(),
+                                        Chip(
+                                          label: Text(
+                                            'Owner',
+                                            style: TextStyle(
+                                              color: Colors.green.shade800,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              shopName,
-                              style: const TextStyle(
-                                fontSize: 20,
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
+
+                        const SizedBox(height: 20),
+
+                        // Details Card
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                          child: Card(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 2,
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Shop Details',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.phone, size: 18),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          contact.isNotEmpty
+                                              ? contact
+                                              : 'No contact provided',
+                                        ),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.edit, size: 18),
+                                        onPressed:
+                                            () => _showEditShopDialog(
+                                              context,
+                                              contact,
+                                              address,
+                                            ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.location_on, size: 18),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          address.isNotEmpty
+                                              ? address
+                                              : 'No address provided',
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ),
                             ),
-                            const SizedBox(height: 6),
-                            Row(
-                              children: [
-                                if (ownerName.isNotEmpty)
-                                  Text(
-                                    ownerName,
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                    ),
-                                  ),
-                                const Spacer(),
-                                Chip(
-                                  label: Text(
-                                    'Owner',
-                                    style: TextStyle(
-                                      color: Colors.green.shade800,
-                                    ),
-                                  ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Action tiles
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: () {},
+                                  icon: const Icon(Icons.people),
+                                  label: const Text('Barbers'),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: () {},
+                                  icon: const Icon(Icons.calendar_today),
+                                  label: const Text('Bookings'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // Premium light color grid with 3 features
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade50,
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black12,
+                                  blurRadius: 8,
+                                  offset: Offset(0, 2),
                                 ),
                               ],
                             ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                // Details Card
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Card(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    elevation: 2,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Shop Details',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
+                            padding: const EdgeInsets.all(12),
+                            child: GridView.count(
+                              shrinkWrap: true,
+                              crossAxisCount: 3,
+                              childAspectRatio: 0.75,
+                              crossAxisSpacing: 8,
+                              mainAxisSpacing: 8,
+                              physics: const NeverScrollableScrollPhysics(),
+                              children: [
+                                _FeatureTile(
+                                  icon: Icons.account_balance_wallet,
+                                  title: 'Account',
+                                  subtitle: 'Accessories & Salaries',
+                                  onTap:
+                                      () => Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder:
+                                              (_) => AccountManagement(
+                                                shopId: _uid,
+                                              ),
+                                        ),
+                                      ),
+                                ),
+                                _FeatureTile(
+                                  icon: Icons.person_search,
+                                  title: 'Barbers',
+                                  subtitle: 'Manage barbers',
+                                  onTap:
+                                      () => Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder:
+                                              (_) => BarberManagement(
+                                                shopId: _uid,
+                                              ),
+                                        ),
+                                      ),
+                                ),
+                                _FeatureTile(
+                                  icon: Icons.design_services,
+                                  title: 'Services',
+                                  subtitle: 'Add / Remove',
+                                  onTap:
+                                      () => Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder:
+                                              (_) => ServiceManagement(
+                                                shopId: _uid,
+                                              ),
+                                        ),
+                                      ),
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              const Icon(Icons.phone, size: 18),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  contact.isNotEmpty
-                                      ? contact
-                                      : 'No contact provided',
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Overview
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: const [
+                              Text(
+                                'Overview',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
-                              IconButton(
-                                icon: const Icon(Icons.edit, size: 18),
-                                onPressed:
-                                    () => _showEditShopDialog(
-                                      context,
-                                      contact,
-                                      address,
-                                    ),
-                              ),
+                              SizedBox(height: 12),
                             ],
                           ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              const Icon(Icons.location_on, size: 18),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  address.isNotEmpty
-                                      ? address
-                                      : 'No address provided',
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                // Action tiles
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () {},
-                          icon: const Icon(Icons.people),
-                          label: const Text('Barbers'),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () {},
-                          icon: const Icon(Icons.calendar_today),
-                          label: const Text('Bookings'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-
-                // Premium light color grid with 3 features
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black12,
-                          blurRadius: 8,
-                          offset: Offset(0, 2),
-                        ),
+                        const SizedBox(height: 40),
                       ],
                     ),
-                    padding: const EdgeInsets.all(12),
-                    child: GridView.count(
-                      shrinkWrap: true,
-                      crossAxisCount: 3,
-                      childAspectRatio: 0.75,
-                      crossAxisSpacing: 8,
-                      mainAxisSpacing: 8,
-                      physics: const NeverScrollableScrollPhysics(),
-                      children: [
-                        _FeatureTile(
-                          icon: Icons.account_balance_wallet,
-                          title: 'Account',
-                          subtitle: 'Accessories & Salaries',
-                          onTap:
-                              () => Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder:
-                                      (_) => AccountManagement(shopId: _uid),
-                                ),
-                              ),
-                        ),
-                        _FeatureTile(
-                          icon: Icons.person_search,
-                          title: 'Barbers',
-                          subtitle: 'Manage barbers',
-                          onTap:
-                              () => Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder:
-                                      (_) => BarberManagement(shopId: _uid),
-                                ),
-                              ),
-                        ),
-                        _FeatureTile(
-                          icon: Icons.design_services,
-                          title: 'Services',
-                          subtitle: 'Add / Remove',
-                          onTap:
-                              () => Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder:
-                                      (_) => ServiceManagement(shopId: _uid),
-                                ),
-                              ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                // Overview
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text(
-                        'Overview',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      SizedBox(height: 12),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 40),
-              ],
-            ),
-          );
+                  );
+                },
+              )
+              : _selectedIndex == 1
+              ? OwnerProfile(shopId: _uid)
+              : OwnerWallet(shopId: _uid),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedIndex,
+        onTap: (i) {
+          setState(() {
+            _selectedIndex = i;
+          });
+          _saveNavIndex(i);
         },
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.account_balance_wallet),
+            label: 'Wallet',
+          ),
+        ],
       ),
     );
   }
+  // Profile and Wallet moved to separate pages: see owner_profile.dart and owner_wallet.dart
+
+  // Profile and Wallet moved to separate pages: see owner_profile.dart and owner_wallet.dart
 
   Future<void> _showEditShopDialog(
     BuildContext context,

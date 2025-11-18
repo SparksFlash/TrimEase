@@ -136,7 +136,15 @@ class _LoginFormState extends State<LoginForm> {
                   focusNode,
                   onFieldSubmitted,
                 ) {
-                  controller.text = _shopPickerController.text;
+                  // Avoid assigning to the passed controller synchronously
+                  // during build (which can trigger widget rebuilds). Defer
+                  // the update to the next frame so we don't cause
+                  // "setState() or markNeedsBuild() called during build".
+                  if (controller.text != _shopPickerController.text) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) controller.text = _shopPickerController.text;
+                    });
+                  }
                   return TextFormField(
                     controller: controller,
                     focusNode: focusNode,

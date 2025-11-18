@@ -93,7 +93,7 @@ class _DetailPageState extends State<DetailPage> {
               .get();
       final data = doc.data();
       setState(() {
-        _serviceTitle = (data?['title'] ?? '').toString();
+        _serviceTitle = (data?['title'] ?? data?['name'] ?? '').toString();
         _servicePrice =
             (data?['price'] is num)
                 ? (data!['price'] as num).toDouble()

@@ -10,12 +10,13 @@ class ServicesPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Services')),
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('shop')
-            .doc(shopId)
-            .collection('services')
-            .orderBy('createdAt', descending: false)
-            .snapshots(),
+        stream:
+            FirebaseFirestore.instance
+                .collection('shop')
+                .doc(shopId)
+                .collection('services')
+                .orderBy('createdAt', descending: false)
+                .snapshots(),
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting)
             return const Center(child: CircularProgressIndicator());
@@ -28,7 +29,7 @@ class ServicesPage extends StatelessWidget {
             separatorBuilder: (_, __) => const Divider(),
             itemBuilder: (context, i) {
               final m = docs[i].data() as Map<String, dynamic>;
-              final title = (m['title'] ?? '').toString();
+              final title = (m['title'] ?? m['name'] ?? '').toString();
               final price = (m['price'] ?? '').toString();
               final desc = (m['description'] ?? '').toString();
               return ListTile(

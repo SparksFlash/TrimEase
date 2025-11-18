@@ -2,10 +2,18 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
 import 'package:firebase_core/firebase_core.dart' as firebase_core;
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'services_page.dart';
 import 'booking_page.dart';
 import 'my_bookings.dart';
 import '../../payment/checkout.dart';
+import '../../utils/theme_provider.dart';
+import 'package:image_picker/image_picker.dart';
+import '../../utils/cloudinary_service.dart';
+import 'customer_profile.dart';
+import 'customer_wallet.dart';
+import 'customer_chatbot.dart';
 
 class CustomerDashboard extends StatefulWidget {
   const CustomerDashboard({Key? key}) : super(key: key);
@@ -16,6 +24,9 @@ class CustomerDashboard extends StatefulWidget {
 
 class _CustomerDashboardState extends State<CustomerDashboard> {
   late final String _uid;
+  // bottom nav selected index
+  int _selectedIndex = 0;
+  static const _navPrefKey = 'customer_nav_index';
 
   @override
   void initState() {
@@ -30,6 +41,22 @@ class _CustomerDashboardState extends State<CustomerDashboard> {
     } catch (_) {
       _uid = '';
     }
+    _loadNavIndex();
+  }
+
+  Future<void> _loadNavIndex() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final idx = prefs.getInt(_navPrefKey) ?? 0;
+      if (mounted) setState(() => _selectedIndex = idx);
+    } catch (_) {}
+  }
+
+  Future<void> _saveNavIndex(int idx) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_navPrefKey, idx);
+    } catch (_) {}
   }
 
   String _formatPhone(String input) {
@@ -60,12 +87,74 @@ class _CustomerDashboardState extends State<CustomerDashboard> {
       text: (data['name'] ?? '').toString(),
     );
     bool loading = false;
+    String currentPhoto = (data['photoUrl'] ?? '').toString();
+    String currentPhotoDeleteToken =
+        (data['photoDeleteToken'] ?? '').toString();
 
     final result = await showDialog<bool>(
       context: ctx,
       builder: (dctx) {
         return StatefulBuilder(
           builder: (dctx, setState) {
+            String photoLocal = currentPhoto;
+            String photoDeleteTokenLocal = currentPhotoDeleteToken;
+            bool uploading = false;
+
+            Future<void> _pickAndUpload() async {
+              try {
+                final picker = ImagePicker();
+                final picked = await picker.pickImage(
+                  source: ImageSource.gallery,
+                  maxWidth: 1600,
+                  maxHeight: 1600,
+                  imageQuality: 80,
+                );
+                if (picked == null) return;
+                if (!dctx.mounted) return;
+                setState(() => uploading = true);
+                final resp = await CloudinaryService.uploadXFile(
+                  picked,
+                  folder: 'user_photos',
+                );
+                photoLocal = (resp['secure_url'] ?? '').toString();
+                photoDeleteTokenLocal = (resp['delete_token'] ?? '').toString();
+                if (!dctx.mounted) return;
+                setState(() => uploading = false);
+              } catch (e) {
+                if (dctx.mounted) setState(() => uploading = false);
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Image upload failed: $e')),
+                );
+              }
+            }
+
+            Future<void> _removePhoto() async {
+              if (photoDeleteTokenLocal.isNotEmpty) {
+                setState(() => uploading = true);
+                try {
+                  final ok = await CloudinaryService.deleteByToken(
+                    photoDeleteTokenLocal,
+                  );
+                  if (ok) {
+                    photoLocal = '';
+                    photoDeleteTokenLocal = '';
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Failed to remove photo')),
+                    );
+                  }
+                } catch (e) {
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text('Remove failed: $e')));
+                }
+                setState(() => uploading = false);
+              } else {
+                photoLocal = '';
+              }
+            }
+
             return Dialog(
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -76,6 +165,75 @@ class _CustomerDashboardState extends State<CustomerDashboard> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     // (Logout moved to AppBar) keep dialog focused on profile fields
+                    // Photo preview + controls
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 36,
+                          backgroundColor: Colors.grey.shade200,
+                          backgroundImage:
+                              (photoLocal.isNotEmpty)
+                                  ? NetworkImage(photoLocal) as ImageProvider
+                                  : null,
+                          child:
+                              photoLocal.isEmpty
+                                  ? Text(
+                                    nameCtrl.text.isNotEmpty
+                                        ? nameCtrl.text[0].toUpperCase()
+                                        : 'C',
+                                    style: const TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  )
+                                  : null,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              TextButton.icon(
+                                onPressed:
+                                    uploading
+                                        ? null
+                                        : () async {
+                                          await _pickAndUpload();
+                                        },
+                                icon:
+                                    uploading
+                                        ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                        : const Icon(Icons.photo_camera),
+                                label: const Text('Change photo'),
+                              ),
+                              if (photoLocal.isNotEmpty)
+                                TextButton.icon(
+                                  onPressed:
+                                      uploading
+                                          ? null
+                                          : () async {
+                                            await _removePhoto();
+                                          },
+                                  icon: const Icon(
+                                    Icons.delete_outline,
+                                    color: Colors.redAccent,
+                                  ),
+                                  label: const Text(
+                                    'Remove photo',
+                                    style: TextStyle(color: Colors.redAccent),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: nameCtrl,
@@ -145,6 +303,21 @@ class _CustomerDashboardState extends State<CustomerDashboard> {
                                         if (addressCtrl.text.trim().isNotEmpty)
                                           updates['address'] =
                                               addressCtrl.text.trim();
+                                        // Persist photo fields if present or removed
+                                        if (photoLocal.isNotEmpty) {
+                                          updates['photoUrl'] = photoLocal;
+                                          if (photoDeleteTokenLocal.isNotEmpty)
+                                            updates['photoDeleteToken'] =
+                                                photoDeleteTokenLocal;
+                                        } else {
+                                          if (currentPhoto.isNotEmpty) {
+                                            updates['photoUrl'] =
+                                                FieldValue.delete();
+                                            updates['photoDeleteToken'] =
+                                                FieldValue.delete();
+                                          }
+                                        }
+
                                         if (updates.isNotEmpty) {
                                           await FirebaseFirestore.instance
                                               .collection('users')
@@ -206,6 +379,14 @@ class _CustomerDashboardState extends State<CustomerDashboard> {
       appBar: AppBar(
         title: const Text('Customer Dashboard'),
         actions: [
+          Consumer<ThemeProvider>(
+            builder:
+                (ctx, theme, _) => IconButton(
+                  tooltip: 'Toggle theme',
+                  icon: Icon(theme.isDark ? Icons.light_mode : Icons.dark_mode),
+                  onPressed: () => theme.toggle(),
+                ),
+          ),
           IconButton(
             tooltip: 'Logout',
             icon: const Icon(Icons.logout),
@@ -229,329 +410,421 @@ class _CustomerDashboardState extends State<CustomerDashboard> {
                     ),
               );
               if (ok != true) return;
-              await fb_auth.FirebaseAuth.instance.signOut();
-              // try to go to a named login route if available, otherwise pop until first route
+
+              // show blocking progress
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder:
+                    (ctx) => const Center(child: CircularProgressIndicator()),
+              );
+
               try {
-                Navigator.of(
-                  context,
-                ).pushNamedAndRemoveUntil('/login', (r) => false);
-              } catch (_) {
-                Navigator.of(context).popUntil((r) => r.isFirst);
+                await fb_auth.FirebaseAuth.instance.signOut();
+              } catch (e) {
+                debugPrint('Sign out failed: $e');
+              }
+
+              try {
+                Navigator.of(context).pop();
+              } catch (_) {}
+
+              if (mounted) {
+                try {
+                  Navigator.of(
+                    context,
+                  ).pushNamedAndRemoveUntil('/auth', (r) => false);
+                } catch (_) {
+                  Navigator.of(context).popUntil((r) => r.isFirst);
+                }
               }
             },
           ),
         ],
       ),
-      body: StreamBuilder<DocumentSnapshot>(
-        stream:
-            FirebaseFirestore.instance
-                .collection('users')
-                .doc(_uid)
-                .snapshots(),
-        builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting)
-            return const Center(child: CircularProgressIndicator());
-          final data = snap.data?.data() as Map<String, dynamic>? ?? {};
-          final name = (data['name'] ?? '').toString();
-          final email = (data['email'] ?? '').toString();
-          final phone = (data['phone'] ?? '').toString();
-          final address = (data['address'] ?? '').toString();
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 350),
+        transitionBuilder:
+            (child, anim) => FadeTransition(opacity: anim, child: child),
+        child:
+            _selectedIndex == 0
+                ? StreamBuilder<DocumentSnapshot>(
+                  key: const ValueKey('home'),
+                  stream:
+                      FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(_uid)
+                          .snapshots(),
+                  builder: (context, snap) {
+                    if (snap.connectionState == ConnectionState.waiting)
+                      return const Center(child: CircularProgressIndicator());
+                    final data =
+                        snap.data?.data() as Map<String, dynamic>? ?? {};
+                    final name = (data['name'] ?? '').toString();
+                    final email = (data['email'] ?? '').toString();
+                    final phone = (data['phone'] ?? '').toString();
+                    final address = (data['address'] ?? '').toString();
 
-          return SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Premium header
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 20,
-                    horizontal: 18,
-                  ),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Colors.blue.shade700, Colors.blue.shade400],
-                    ),
-                    borderRadius: const BorderRadius.only(
-                      bottomLeft: Radius.circular(20),
-                      bottomRight: Radius.circular(20),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 36,
-                        backgroundColor: Colors.white24,
-                        child: Text(
-                          name.isNotEmpty ? name[0].toUpperCase() : 'C',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 28,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              name.isNotEmpty ? name : email,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              email,
-                              style: const TextStyle(color: Colors.white70),
-                            ),
-                          ],
-                        ),
-                      ),
-                      ElevatedButton(
-                        onPressed: () => _showEditDialog(context, data),
-                        child: const Text('Edit'),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Card(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
+                    return SingleChildScrollView(
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          const Text(
-                            'Contact & Address',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
+                          // Premium header
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 20,
+                              horizontal: 18,
+                            ),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [Color(0xFF217D5A), Color(0xFF49B07E)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: const BorderRadius.only(
+                                bottomLeft: Radius.circular(20),
+                                bottomRight: Radius.circular(20),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 36,
+                                  backgroundColor: Colors.white24,
+                                  child: Text(
+                                    name.isNotEmpty
+                                        ? name[0].toUpperCase()
+                                        : 'C',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 28,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        name.isNotEmpty ? name : email,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        email,
+                                        style: const TextStyle(
+                                          color: Colors.white70,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                ElevatedButton(
+                                  onPressed:
+                                      () => _showEditDialog(context, data),
+                                  child: const Text('Edit'),
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              const Icon(Icons.phone, size: 18),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  phone.isNotEmpty
-                                      ? phone
-                                      : 'No phone provided',
+
+                          const SizedBox(height: 16),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16.0,
+                            ),
+                            child: Card(
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Contact & Address',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.phone, size: 18),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            phone.isNotEmpty
+                                                ? phone
+                                                : 'No phone provided',
+                                          ),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(
+                                            Icons.edit,
+                                            size: 18,
+                                          ),
+                                          onPressed:
+                                              () => _showEditDialog(
+                                                context,
+                                                data,
+                                              ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.location_on, size: 18),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            address.isNotEmpty
+                                                ? address
+                                                : 'No address provided',
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
                                 ),
                               ),
-                              IconButton(
-                                icon: const Icon(Icons.edit, size: 18),
-                                onPressed: () => _showEditDialog(context, data),
-                              ),
-                            ],
+                            ),
                           ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              const Icon(Icons.location_on, size: 18),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  address.isNotEmpty
-                                      ? address
-                                      : 'No address provided',
+
+                          const SizedBox(height: 24),
+                          // Premium feature grid (Services, Booking, My booking)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16.0,
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: InkWell(
+                                    onTap: () => _openServices(context),
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(context).cardColor,
+                                        borderRadius: BorderRadius.circular(12),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(
+                                              0.05,
+                                            ),
+                                            blurRadius: 8,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(10),
+                                            decoration: BoxDecoration(
+                                              color: Colors.blue.shade50,
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                            child: const Icon(
+                                              Icons.content_cut,
+                                              color: Colors.blue,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 12),
+                                          const Text(
+                                            'Services',
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 6),
+                                          const Text(
+                                            'Browse services & prices',
+                                            style: TextStyle(
+                                              color: Colors.black54,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: InkWell(
+                                    onTap:
+                                        () => Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                            builder: (_) => const BookingPage(),
+                                          ),
+                                        ),
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(context).cardColor,
+                                        borderRadius: BorderRadius.circular(12),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(
+                                              0.05,
+                                            ),
+                                            blurRadius: 8,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(10),
+                                            decoration: BoxDecoration(
+                                              color: Colors.green.shade50,
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                            child: const Icon(
+                                              Icons.calendar_today,
+                                              color: Colors.green,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 12),
+                                          const Text(
+                                            'Booking',
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 6),
+                                          const Text(
+                                            'Schedule an appointment',
+                                            style: TextStyle(
+                                              color: Colors.black54,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: InkWell(
+                                    onTap:
+                                        () => Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                            builder:
+                                                (_) => const MyBookingsPage(),
+                                          ),
+                                        ),
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(context).cardColor,
+                                        borderRadius: BorderRadius.circular(12),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(
+                                              0.05,
+                                            ),
+                                            blurRadius: 8,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(10),
+                                            decoration: BoxDecoration(
+                                              color: Colors.purple.shade50,
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                            child: const Icon(
+                                              Icons.view_list,
+                                              color: Colors.purple,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 12),
+                                          const Text(
+                                            'My booking',
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 6),
+                                          const Text(
+                                            'View and manage your bookings',
+                                            style: TextStyle(
+                                              color: Colors.black54,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
+
+                          const SizedBox(height: 24),
                         ],
                       ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-                // Premium feature grid (Services, Booking, My booking)
-                // (Removed inline 'Your Bookings' list; user bookings are now in a dedicated page)
-
-                // Premium feature grid (Services, Booking)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: InkWell(
-                          onTap: () => _openServices(context),
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.05),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: Colors.blue.shade50,
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Icon(
-                                    Icons.content_cut,
-                                    color: Colors.blue,
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                const Text(
-                                  'Services',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                const Text(
-                                  'Browse services & prices',
-                                  style: TextStyle(color: Colors.black54),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: InkWell(
-                          onTap:
-                              () => Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const BookingPage(),
-                                ),
-                              ),
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.05),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: Colors.green.shade50,
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Icon(
-                                    Icons.calendar_today,
-                                    color: Colors.green,
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                const Text(
-                                  'Booking',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                const Text(
-                                  'Schedule an appointment',
-                                  style: TextStyle(color: Colors.black54),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: InkWell(
-                          onTap:
-                              () => Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const MyBookingsPage(),
-                                ),
-                              ),
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.05),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: Colors.purple.shade50,
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Icon(
-                                    Icons.view_list,
-                                    color: Colors.purple,
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                const Text(
-                                  'My booking',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                const Text(
-                                  'View and manage your bookings',
-                                  style: TextStyle(color: Colors.black54),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-              ],
-            ),
+                    );
+                  },
+                )
+                : _selectedIndex == 1
+                ? CustomerProfile(userId: _uid)
+                : CustomerWallet(userId: _uid),
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedIndex,
+        onTap: (i) {
+          setState(() {
+            _selectedIndex = i;
+          });
+          _saveNavIndex(i);
+        },
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.account_balance_wallet),
+            label: 'Wallet',
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => CustomerChatbot(userId: _uid)),
           );
         },
+        icon: const Icon(Icons.chat_bubble_outline),
+        label: const Text('Assistant'),
       ),
     );
   }

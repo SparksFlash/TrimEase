@@ -4,6 +4,9 @@ import 'package:firebase_core/firebase_core.dart' as firebase_core;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../auth/provider/auth_provider.dart';
+import '../../utils/theme_provider.dart';
+import 'package:image_picker/image_picker.dart';
+import '../../utils/cloudinary_service.dart';
 
 class BarberDashboard extends StatefulWidget {
   const BarberDashboard({Key? key}) : super(key: key);
@@ -133,11 +136,63 @@ class _BarberDashboardState extends State<BarberDashboard> {
       appBar: AppBar(
         title: const Text('Barber Dashboard'),
         actions: [
+          Consumer<ThemeProvider>(
+            builder:
+                (ctx, theme, _) => IconButton(
+                  icon: Icon(theme.isDark ? Icons.light_mode : Icons.dark_mode),
+                  onPressed: () => theme.toggle(),
+                ),
+          ),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
-              await auth.signOutIfAny();
-              if (mounted) Navigator.of(context).pushReplacementNamed('/auth');
+              final ok = await showDialog<bool>(
+                context: context,
+                builder:
+                    (c) => AlertDialog(
+                      title: const Text('Logout'),
+                      content: const Text('Are you sure you want to logout?'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(c).pop(false),
+                          child: const Text('Cancel'),
+                        ),
+                        ElevatedButton(
+                          onPressed: () => Navigator.of(c).pop(true),
+                          child: const Text('Logout'),
+                        ),
+                      ],
+                    ),
+              );
+              if (ok != true) return;
+
+              // show blocking progress
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder:
+                    (ctx) => const Center(child: CircularProgressIndicator()),
+              );
+
+              try {
+                await auth.signOutIfAny();
+              } catch (e) {
+                debugPrint('Sign out failed: $e');
+              }
+
+              try {
+                Navigator.of(context).pop();
+              } catch (_) {}
+
+              if (mounted) {
+                try {
+                  Navigator.of(
+                    context,
+                  ).pushNamedAndRemoveUntil('/auth', (r) => false);
+                } catch (_) {
+                  Navigator.of(context).popUntil((r) => r.isFirst);
+                }
+              }
             },
           ),
         ],
@@ -702,6 +757,9 @@ class _BarberDashboardState extends State<BarberDashboard> {
       text: (data['name'] ?? '').toString(),
     );
     final email = (data['email'] ?? '').toString();
+    String currentPhoto = (data['photoUrl'] ?? '').toString();
+    String currentPhotoDeleteToken =
+        (data['photoDeleteToken'] ?? '').toString();
     bool loading = false;
 
     final result = await showDialog<bool>(
@@ -709,6 +767,82 @@ class _BarberDashboardState extends State<BarberDashboard> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setState) {
+            String photoLocal = currentPhoto;
+            String photoDeleteTokenLocal = currentPhotoDeleteToken;
+            bool uploading = false;
+            double uploadProgress = 0.0;
+
+            Future<void> _pickAndUpload() async {
+              try {
+                final picker = ImagePicker();
+                final picked = await picker.pickImage(
+                  source: ImageSource.gallery,
+                  maxWidth: 1600,
+                  maxHeight: 1600,
+                  imageQuality: 80,
+                );
+                if (picked == null) return;
+                setState(() {
+                  uploading = true;
+                  uploadProgress = 0.0;
+                });
+                final resp = await CloudinaryService.uploadXFile(
+                  picked,
+                  folder: 'barber_photos',
+                  onProgress: (sent, total) {
+                    if (total > 0) {
+                      if (!ctx.mounted) return;
+                      setState(() => uploadProgress = sent / total);
+                    }
+                  },
+                );
+                photoLocal = (resp['secure_url'] ?? '').toString();
+                photoDeleteTokenLocal = (resp['delete_token'] ?? '').toString();
+                if (!ctx.mounted) return;
+                setState(() {
+                  uploading = false;
+                  uploadProgress = 0.0;
+                });
+              } catch (e) {
+                if (ctx.mounted) {
+                  setState(() {
+                    uploading = false;
+                    uploadProgress = 0.0;
+                  });
+                }
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Image upload failed: $e')),
+                );
+              }
+            }
+
+            Future<void> _removePhoto() async {
+              if (photoDeleteTokenLocal.isNotEmpty) {
+                setState(() => uploading = true);
+                try {
+                  final ok = await CloudinaryService.deleteByToken(
+                    photoDeleteTokenLocal,
+                  );
+                  if (ok) {
+                    photoLocal = '';
+                    photoDeleteTokenLocal = '';
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Failed to remove photo')),
+                    );
+                  }
+                } catch (e) {
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text('Remove failed: $e')));
+                }
+                setState(() => uploading = false);
+              } else {
+                photoLocal = '';
+              }
+            }
+
             return Dialog(
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -718,6 +852,89 @@ class _BarberDashboardState extends State<BarberDashboard> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Photo preview + controls
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 36,
+                          backgroundColor: Colors.grey.shade200,
+                          backgroundImage:
+                              (photoLocal.isNotEmpty)
+                                  ? NetworkImage(photoLocal) as ImageProvider
+                                  : null,
+                          child:
+                              photoLocal.isEmpty
+                                  ? Text(
+                                    nameCtrl.text.isNotEmpty
+                                        ? nameCtrl.text[0].toUpperCase()
+                                        : 'B',
+                                    style: const TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  )
+                                  : null,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              TextButton.icon(
+                                onPressed:
+                                    uploading
+                                        ? null
+                                        : () async {
+                                          await _pickAndUpload();
+                                        },
+                                icon:
+                                    uploading
+                                        ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                        : const Icon(Icons.photo_camera),
+                                label: const Text('Change photo'),
+                              ),
+                              if (photoLocal.isNotEmpty)
+                                TextButton.icon(
+                                  onPressed:
+                                      uploading
+                                          ? null
+                                          : () async {
+                                            await _removePhoto();
+                                          },
+                                  icon: const Icon(
+                                    Icons.delete_outline,
+                                    color: Colors.redAccent,
+                                  ),
+                                  label: const Text(
+                                    'Remove photo',
+                                    style: TextStyle(color: Colors.redAccent),
+                                  ),
+                                ),
+                              if (uploading)
+                                Padding(
+                                  padding: const EdgeInsets.only(
+                                    top: 8.0,
+                                    right: 8.0,
+                                  ),
+                                  child: LinearProgressIndicator(
+                                    value:
+                                        uploadProgress > 0
+                                            ? uploadProgress
+                                            : null,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
                     Text(
                       'Edit profile',
                       style: Theme.of(context).textTheme.titleMedium,
@@ -758,11 +975,28 @@ class _BarberDashboardState extends State<BarberDashboard> {
                                       if (newName.isEmpty) return;
                                       setState(() => loading = true);
                                       try {
-                                        await docRef.update({
+                                        final updates = <String, dynamic>{
                                           'name': newName,
                                           'updatedAt':
                                               FieldValue.serverTimestamp(),
-                                        });
+                                        };
+
+                                        // Persist photo fields if present or removed
+                                        if (photoLocal.isNotEmpty) {
+                                          updates['photoUrl'] = photoLocal;
+                                          if (photoDeleteTokenLocal.isNotEmpty)
+                                            updates['photoDeleteToken'] =
+                                                photoDeleteTokenLocal;
+                                        } else {
+                                          if (currentPhoto.isNotEmpty) {
+                                            updates['photoUrl'] =
+                                                FieldValue.delete();
+                                            updates['photoDeleteToken'] =
+                                                FieldValue.delete();
+                                          }
+                                        }
+
+                                        await docRef.update(updates);
                                         Navigator.of(ctx).pop(true);
                                       } catch (e) {
                                         setState(() => loading = false);

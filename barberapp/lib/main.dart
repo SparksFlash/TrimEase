@@ -8,6 +8,7 @@ import 'features/auth/ui/auth_page.dart';
 import 'features/owner/owner_dashboard.dart';
 import 'features/barber/barber_dashboard.dart';
 import 'features/customer/customer_dashboard.dart';
+import 'utils/theme_provider.dart';
 // firebase_auth and cloud_firestore not needed here after removing auto-redirect logic
 
 // NOTE: Ensure firebase_options.dart exists from FlutterFire CLI if you use it.
@@ -63,45 +64,62 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) => AuthProvider(firebaseAvailable: firebaseAvailable),
         ),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
       ],
-      child: MaterialApp(
-        title: 'BarberApp',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(primarySwatch: Colors.green),
-        routes: {
-          '/': (_) => const RootRouter(),
-          '/auth': (_) => const AuthPage(),
-          '/owner_dashboard': (_) => const OwnerDashboard(),
-          '/barber_dashboard': (_) => const BarberDashboard(),
-          '/customer_dashboard': (_) => const CustomerDashboard(),
-        },
-        initialRoute: '/auth',
-        builder: (context, child) {
-          // If Firebase failed to initialize show a small banner at the top so
-          // the developer knows why some features may not work.
-          if (!firebaseAvailable) {
-            return Column(
-              children: [
-                Container(
-                  width: double.infinity,
-                  color: Colors.orange.shade700,
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 6,
-                    horizontal: 12,
-                  ),
-                  child: const SafeArea(
-                    child: Text(
-                      'Firebase not initialized. Some features may be disabled.\nRun `flutterfire configure` and add firebase_options.dart for web.',
-                      style: TextStyle(color: Colors.white, fontSize: 12),
-                      textAlign: TextAlign.center,
+      child: Builder(
+        builder: (context) {
+          final theme = Provider.of<ThemeProvider>(context);
+          return MaterialApp(
+            title: 'BarberApp',
+            debugShowCheckedModeBanner: false,
+            theme: ThemeData(
+              colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
+              useMaterial3: false,
+            ),
+            darkTheme: ThemeData(
+              brightness: Brightness.dark,
+              colorScheme: ColorScheme.fromSeed(
+                seedColor: Colors.green,
+                brightness: Brightness.dark,
+              ),
+            ),
+            themeMode: theme.isDark ? ThemeMode.dark : ThemeMode.light,
+            routes: {
+              '/': (_) => const RootRouter(),
+              '/auth': (_) => const AuthPage(),
+              '/owner_dashboard': (_) => const OwnerDashboard(),
+              '/barber_dashboard': (_) => const BarberDashboard(),
+              '/customer_dashboard': (_) => const CustomerDashboard(),
+            },
+            initialRoute: '/auth',
+            builder: (context, child) {
+              // If Firebase failed to initialize show a small banner at the top so
+              // the developer knows why some features may not work.
+              if (!firebaseAvailable) {
+                return Column(
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      color: Colors.orange.shade700,
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 6,
+                        horizontal: 12,
+                      ),
+                      child: const SafeArea(
+                        child: Text(
+                          'Firebase not initialized. Some features may be disabled.\nRun `flutterfire configure` and add firebase_options.dart for web.',
+                          style: TextStyle(color: Colors.white, fontSize: 12),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-                Expanded(child: child ?? const SizedBox.shrink()),
-              ],
-            );
-          }
-          return child ?? const SizedBox.shrink();
+                    Expanded(child: child ?? const SizedBox.shrink()),
+                  ],
+                );
+              }
+              return child ?? const SizedBox.shrink();
+            },
+          );
         },
       ),
     );

@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
 import 'package:firebase_core/firebase_core.dart' as firebase_core;
 import 'package:flutter/material.dart';
+import 'dart:async';
 import '../../payment/checkout.dart';
 
 class BookingPage extends StatefulWidget {
@@ -34,6 +35,7 @@ class _BookingPageState extends State<BookingPage> {
 
   // booked slot ids for selected barber/date
   Set<String> _bookedSlotIds = {};
+  StreamSubscription<QuerySnapshot>? _bookedSub;
 
   List<Map<String, String>> _shops = [];
   List<Map<String, String>> _barbers = [];
@@ -127,27 +129,45 @@ class _BookingPageState extends State<BookingPage> {
     // normalize date to yyyy-mm-dd string for equality
     final dayStr =
         '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-    try {
-      final snap =
-          await _fire
-              .collection('shop')
-              .doc(shopId)
-              .collection('bookings')
-              .where('barberId', isEqualTo: barberId)
-              .where('status', isEqualTo: 'confirmed')
-              .where('scheduledDate', isEqualTo: dayStr)
-              .get();
 
-      final ids = <String>{};
-      for (final d in snap.docs) {
-        final slot = (d.data()['slotId'] ?? '').toString();
-        if (slot.isNotEmpty) ids.add(slot);
-      }
-      setState(() => _bookedSlotIds = ids);
+    // cancel any previous listener
+    try {
+      await _bookedSub?.cancel();
+    } catch (_) {}
+
+    try {
+      final query = _fire
+          .collection('shop')
+          .doc(shopId)
+          .collection('bookings')
+          .where('barberId', isEqualTo: barberId)
+          .where('status', isEqualTo: 'confirmed')
+          .where('scheduledDate', isEqualTo: dayStr);
+
+      _bookedSub = query.snapshots().listen(
+        (snap) {
+          final ids = <String>{};
+          for (final d in snap.docs) {
+            final slot = (d.data()['slotId'] ?? '').toString();
+            if (slot.isNotEmpty) ids.add(slot);
+          }
+          if (mounted) setState(() => _bookedSlotIds = ids);
+        },
+        onError: (e) {
+          debugPrint('Booked slots listener error: $e');
+          if (mounted) setState(() => _bookedSlotIds = {});
+        },
+      );
     } catch (e) {
-      debugPrint('Failed to fetch booked slots: $e');
-      setState(() => _bookedSlotIds = {});
+      debugPrint('Failed to start booked slots listener: $e');
+      if (mounted) setState(() => _bookedSlotIds = {});
     }
+  }
+
+  @override
+  void dispose() {
+    _bookedSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _makeBooking() async {
@@ -173,7 +193,9 @@ class _BookingPageState extends State<BookingPage> {
     final barberId = _selectedBarber!['id']!;
     final barberName = (_selectedBarber!['name'] ?? 'Barber').toString();
     final serviceId = _selectedService!['id'];
-    final serviceTitle = (_selectedService!['title'] ?? 'Service').toString();
+    final serviceTitle =
+        (_selectedService!['title'] ?? _selectedService!['name'] ?? 'Service')
+            .toString();
     final price =
         (_selectedService!['price'] is num)
             ? (_selectedService!['price'] as num).toDouble()
@@ -436,14 +458,18 @@ class _BookingPageState extends State<BookingPage> {
             DropdownButtonFormField<String>(
               decoration: const InputDecoration(labelText: 'Choose service'),
               items:
-                  _services
-                      .map(
-                        (s) => DropdownMenuItem<String>(
-                          value: s['id'].toString(),
-                          child: Text('${s['title']} - ৳${s['price']}'),
-                        ),
-                      )
-                      .toList(),
+                  _services.map((s) {
+                    final title = (s['title'] ?? s['name'] ?? '').toString();
+                    final price = s['price'] ?? s['cost'] ?? '';
+                    final label =
+                        price.toString().isNotEmpty
+                            ? '$title - ৳$price'
+                            : title;
+                    return DropdownMenuItem<String>(
+                      value: s['id'].toString(),
+                      child: Text(label),
+                    );
+                  }).toList(),
               value: _selectedService?['id']?.toString(),
               onChanged: (v) {
                 if (v == null) return;
@@ -479,15 +505,35 @@ class _BookingPageState extends State<BookingPage> {
                     final label = s['label'] as String;
                     final booked = _bookedSlotIds.contains(id);
                     final selected = _selectedSlotId == id;
+
+                    // Disable past slots if selected date is today
+                    var past = false;
+                    if (_selectedDate != null) {
+                      final now = DateTime.now();
+                      if (_selectedDate!.year == now.year &&
+                          _selectedDate!.month == now.month &&
+                          _selectedDate!.day == now.day) {
+                        final slotStart = DateTime(
+                          _selectedDate!.year,
+                          _selectedDate!.month,
+                          _selectedDate!.day,
+                          s['start'] as int,
+                        );
+                        if (slotStart.isBefore(now)) past = true;
+                      }
+                    }
+
+                    final disabled = booked || past;
+
                     return ChoiceChip(
                       label: Text(label),
                       selected: selected,
                       onSelected: (on) async {
-                        if (booked) return;
+                        if (disabled) return;
                         setState(() => _selectedSlotId = on ? id : null);
                       },
                       selectedColor: Colors.blue,
-                      backgroundColor: booked ? Colors.grey.shade300 : null,
+                      backgroundColor: disabled ? Colors.grey.shade300 : null,
                     );
                   }).toList(),
             ),
