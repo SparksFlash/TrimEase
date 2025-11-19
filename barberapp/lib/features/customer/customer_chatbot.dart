@@ -191,6 +191,15 @@ class _CustomerChatbotState extends State<CustomerChatbot> {
       r'(?:choose|select|pick|time)\s+(\d{1,2}:\d{2})',
       caseSensitive: false,
     );
+    // Short forms accepted to make chat commands easy for users
+    final shortDateRe = RegExp(
+      r'^\s*date\s+(\d{4}-\d{2}-\d{2})\s*$',
+      caseSensitive: false,
+    );
+    final shortTimeRe = RegExp(
+      r'^\s*(?:timeslot|timeslot:)\s*(\d{1,2}:\d{2})\s*$',
+      caseSensitive: false,
+    );
 
     final sm = selectShopRe.firstMatch(text);
     if (sm != null) {
@@ -236,6 +245,58 @@ class _CustomerChatbotState extends State<CustomerChatbot> {
     final tm = chooseTimeRe.firstMatch(text);
     if (tm != null) {
       final t = tm.group(1)!.trim();
+      _selectedTime = t;
+      await _sendBotMessage(
+        'Time selected: $t. When ready, say "pay" to open checkout and complete booking.',
+      );
+      return;
+    }
+
+    // Accept short forms like: "shop <name>", "barber <name>", "Date 2025-12-01", "Timeslot 14:30"
+    // Note: allow users to give shop/barber by index, id or name (selection uses previous lists)
+    final sshort = RegExp(
+      r'^\s*shop\s+(.+)',
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (sshort != null) {
+      final id = sshort.group(1)!.trim();
+      await _selectShopByIdOrIndex(id);
+      return;
+    }
+
+    final bshort = RegExp(
+      r'^\s*barber\s+(.+)',
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (bshort != null) {
+      final id = bshort.group(1)!.trim();
+      await _selectBarberByIdOrIndex(id);
+      return;
+    }
+
+    final dshort = shortDateRe.firstMatch(text);
+    if (dshort != null) {
+      final d = dshort.group(1)!.trim();
+      try {
+        final parts = d.split('-');
+        final dt = DateTime(
+          int.parse(parts[0]),
+          int.parse(parts[1]),
+          int.parse(parts[2]),
+        );
+        _selectedDate = dt;
+        await _sendBotMessage(
+          'Date selected: ${_formatDate(dt)}. Now choose a time (e.g. "Timeslot 14:30").',
+        );
+      } catch (e) {
+        await _sendBotMessage('Invalid date format, use YYYY-MM-DD.');
+      }
+      return;
+    }
+
+    final tshort = shortTimeRe.firstMatch(text);
+    if (tshort != null) {
+      final t = tshort.group(1)!.trim();
       _selectedTime = t;
       await _sendBotMessage(
         'Time selected: $t. When ready, say "pay" to open checkout and complete booking.',
@@ -299,6 +360,17 @@ class _CustomerChatbotState extends State<CustomerChatbot> {
           'To book via chat please use: book <shopId> <serviceId> <YYYY-MM-DD> <HH:MM>',
         );
       }
+      return;
+    }
+
+    // Accept simple 'pay' or 'payment' commands to start checkout
+    if (lower == 'pay' ||
+        lower == 'payment' ||
+        lower == 'goto payment' ||
+        lower == 'done payment' ||
+        lower == 'go to payment') {
+      await _sendBotMessage('Opening payment...');
+      await _proceedToPaymentAndBooking();
       return;
     }
 
@@ -580,9 +652,15 @@ class _CustomerChatbotState extends State<CustomerChatbot> {
             .collection('bookings')
             .doc(newBookingRef.id);
         tx.set(userBookingRef, bookingData);
+        final chatbotBookingRef = FirebaseFirestore.instance
+            .collection('booking_with_chatbot')
+            .doc(newBookingRef.id);
+        final chatbotData = Map<String, dynamic>.from(bookingData);
+        chatbotData['bookedVia'] = 'chatbot';
+        tx.set(chatbotBookingRef, chatbotData);
       });
       await _sendBotMessage(
-        'Booking successful for ${serviceDoc.data()?['title'] ?? serviceId} at ${_formatTimestamp(scheduled)}',
+        'Booking confirmed for ${serviceDoc.data()?['title'] ?? serviceId} at ${_formatTimestamp(scheduled)}',
       );
     } catch (e) {
       if (e == 'slot_conflict') {
